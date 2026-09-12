@@ -132,6 +132,11 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Evacuation recommendations based on proximity
   - Detailed fire attributes (type, location, status)
   - Data from NIFC WFIGS (National Interagency Fire Center)
+- **NOMADS Model-Run Forecasts & Model Comparison** (NEW - Unreleased)
+  - `get_forecast_nomads`: Raw forecast straight from the latest NOMADS/NCEP GFS model run
+  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), and ECMWF proxy (Open-Meteo) side by side for the same location/dates
+  - Per-model deterministic horizon handling (e.g. NAM ~84h, HRRR ~48h) with values marked N/A beyond each model's horizon
+  - HRRR (3km resolution) is opt-in and CONUS-only; requests outside the continental US are rejected with a clear error
 - **Service Status Checking**: Proactively verify API availability with health checks
 - **Enhanced Error Handling**: Detailed, actionable error messages with status page links
 - **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance
@@ -196,10 +201,10 @@ All settings have sensible defaults and can be omitted entirely.
 Control which MCP tools are exposed to reduce context overhead and customize functionality. By default, only **basic** tools are enabled.
 
 **Available Presets:**
-- `basic` (default): Essential weather tools (5 tools) - forecast, current_conditions, alerts, search_location, check_service_status
-- `standard`: Basic + historical_weather (6 tools)
-- `full`: Standard + air_quality (7 tools)
-- `all`: All available tools (16 tools) - includes marine_conditions, weather_imagery, lightning_activity, river_conditions, wildfire_info, save_location, list_saved_locations, get_saved_location, remove_saved_location
+- `basic` (default): Essential weather + saved-location tools (9 tools) - get_forecast, get_current_conditions, get_alerts, search_location, check_service_status, save_location, list_saved_locations, get_saved_location, remove_saved_location
+- `standard`: Basic + get_historical_weather (10 tools)
+- `full`: Standard + get_air_quality (11 tools)
+- `all`: All available tools (18 tools) - also includes get_forecast_nomads, get_model_comparison_forecast, get_marine_conditions, get_weather_imagery, get_lightning_activity, get_river_conditions, get_wildfire_info
 
 **Configuration Examples:**
 
@@ -212,7 +217,7 @@ ENABLED_TOOLS=all,-marine                       # Remove from preset
 ```
 
 **Tool Aliases:**
-Short names are supported: `forecast`, `current`, `conditions`, `alerts`, `warnings`, `historical`, `history`, `status`, `location`, `search`, `air_quality`, `aqi`, `marine`, `ocean`, `waves`, `imagery`, `radar`, `satellite`, `lightning`, `strikes`, `thunderstorm`
+Short names are supported: `forecast`, `nomads`, `gfs`, `model`, `forecast_nomads`, `compare`, `comparison`, `models`, `current`, `conditions`, `alerts`, `warnings`, `historical`, `history`, `status`, `location`, `search`, `air_quality`, `aqi`, `marine`, `ocean`, `waves`, `imagery`, `radar`, `satellite`, `lightning`, `strikes`, `thunderstorm`, `river`, `rivers`, `flood`, `streamflow`, `wildfire`, `wildfires`, `fire`, `fires`, `smoke`
 
 **Benefits:**
 - **Reduced Context**: Load only needed tools to reduce initial MCP context
@@ -953,6 +958,57 @@ Permanently removes a saved location from storage. The location data is deleted 
 **Returns:**
 - Confirmation of removal
 - Count of remaining saved locations
+
+### 17. get_forecast_nomads (NEW - Unreleased)
+Get a forecast straight from the latest NOMADS/NCEP GFS model run.
+
+**Parameters:**
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
+- `days` (optional): Number of days in forecast (1-10, default: 7)
+
+**Description:**
+Fetches and formats a forecast directly from the current NCEP GFS model run via NOMADS, rather than the blended/aggregated data used by `get_forecast`. Useful when you want raw model-run output specifically from NOMADS/GFS. Precipitation chance is derived from 6-hour forecast interval signals.
+
+**Examples:**
+```
+"Get the latest GFS model run forecast for Chicago"
+"What does the raw NOMADS forecast show for home this week?"
+```
+
+**Returns:**
+- Model name and model run time (UTC)
+- Daily high/low temperature
+- Precipitation chance and total
+- Peak wind speed
+- Average humidity
+
+### 18. get_model_comparison_forecast (NEW - Unreleased)
+Compare forecasts across multiple model sources (GFS, NAM, HRRR, ECMWF proxy) side by side.
+
+**Parameters:**
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
+- `days` (optional): Number of forecast days to compare (1-10, default: 7)
+- `models` (optional): Array of models to include — `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf_proxy"` (or `"ecmwf"`, which maps to `"ecmwf_proxy"`). Defaults to `["gfs", "nam", "ecmwf_proxy"]`. `"hrrr"` is opt-in only since it's CONUS-only.
+
+**Description:**
+Pulls GFS and NAM model-run data from NOMADS and blends in ECMWF proxy guidance via Open-Meteo for longer-range context, so you can see how models agree or diverge for the same location and dates. HRRR (3km, CONUS-only) can be added explicitly for high-resolution short-range guidance. Each model has a different deterministic horizon:
+- **NAM:** ~84 hours — later days are shown as N/A
+- **HRRR:** ~48 hours — later days are shown as N/A; requests outside the continental US will fail for this model
+- **GFS / ECMWF proxy:** cover the full requested range
+
+**Examples:**
+```
+"Compare GFS and NAM forecasts for Denver this week"
+"Show me GFS, NAM, and HRRR side by side for Dallas"
+```
+
+**Returns:**
+- Per-model daily high/low temperature, precipitation, and wind (where available within each model's horizon)
+- Model run time and horizon notes (e.g., NAM/HRRR cutoff, HRRR CONUS-only restriction, ECMWF proxy caveat)
 
 ## Using Saved Locations with Weather Tools
 

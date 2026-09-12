@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **NOMADS Model-Run Forecasts** - New `get_forecast_nomads` tool returns a forecast straight from the latest NOMADS/NCEP GFS model run (daily high/low, precipitation chance/total, peak wind, average humidity), rather than the blended data used by `get_forecast`
+- **Multi-Model Comparison** - New `get_model_comparison_forecast` tool compares GFS, NAM, and ECMWF proxy (Open-Meteo) forecasts side by side for the same location/dates, including horizon notes (e.g. NAM's ~84h deterministic cutoff)
+- **HRRR Model Support** - Added NCEP HRRR (3km, CONUS-only) as an opt-in model in `get_model_comparison_forecast`
+  - Uses only the synoptic cycles (00/06/12/18Z) that post the full 48h horizon
+  - Requests outside a CONUS bounding box are rejected with a clear error (use GFS or NAM instead)
+  - HRRR values beyond its ~48h deterministic horizon are marked N/A
+  - Not part of the default model set since it's CONUS-only; pass `models: ["hrrr", ...]` to opt in
+- **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
+
+### Fixed
+- **NAM Grid Lookup** - Fixed `extractNearestValue` returning null/0 for all NAM fields (temperature, humidity, wind, precipitation). NAM's Lambert Conformal Conic grid is curvilinear (parallel flat lat/lon arrays), unlike GFS's separable regular lat/lon grid, so the previous `row * cols + col` index formula produced out-of-bounds lookups for NAM specifically
+- **Central US Timezone Mis-Bucketing** - Corrected timezone assignment for Central US locations that were being bucketed into the wrong US timezone
+
 ## [1.6.1] - 2025-11-10
 
 ### Fixed

@@ -111,8 +111,8 @@ Examples:
 
 - `NOAAService` for US forecasts, alerts, current conditions, and river data.
 - `OpenMeteoService` for global forecast/historical/marine/air quality data.
-- `NOMADSService` for GFS and NAM deterministic model-run forecasts.
-- `ModelComparisonService` for side-by-side GFS/NAM/ECMWF-proxy daily alignment.
+- `NOMADSService` for GFS, NAM, and HRRR (CONUS-only) deterministic model-run forecasts.
+- `ModelComparisonService` for side-by-side GFS/NAM/HRRR/ECMWF-proxy daily alignment.
 - `NominatimService` and `GeocodingService` for location search.
 - `LocationStore` for saved-location persistence.
 

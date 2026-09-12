@@ -20,6 +20,8 @@ src/
 ├── index.ts                 # MCP server entry point, tool registry
 ├── handlers/                # Tool request handlers (one per MCP tool)
 │   ├── forecastHandler.ts
+│   ├── nomadsForecastHandler.ts     # Raw NOMADS/GFS model-run forecast
+│   ├── modelComparisonHandler.ts    # Multi-model (GFS/NAM/HRRR/ECMWF proxy) comparison
 │   ├── currentConditionsHandler.ts
 │   ├── alertsHandler.ts
 │   ├── historicalWeatherHandler.ts
@@ -33,6 +35,8 @@ src/
 ├── services/                # External API clients
 │   ├── noaa.ts             # NOAA Weather API client
 │   ├── openmeteo.ts        # Open-Meteo API client
+│   ├── nomads.ts           # NOMADS/NCEP model-run client (GFS, NAM, HRRR)
+│   ├── modelComparison.ts  # Orchestrates multi-model comparison
 │   ├── nominatim.ts        # Nominatim/OSM geocoding client (v1.7.0)
 │   ├── locationStore.ts    # Saved locations storage service (v1.7.0)
 │   ├── nifc.ts             # NIFC wildfire API client
@@ -40,6 +44,8 @@ src/
 ├── types/                   # TypeScript type definitions
 │   ├── noaa.ts
 │   ├── openmeteo.ts
+│   ├── nomads.ts           # NOMADS model-run response types
+│   ├── modelComparison.ts  # Model comparison request/response types
 │   ├── nominatim.ts        # Nominatim API types (v1.7.0)
 │   └── savedLocations.ts   # Saved locations types (v1.7.0)
 ├── utils/                   # Shared utilities
@@ -68,24 +74,26 @@ src/
 4. **Caching Strategy:** LRU cache with TTL based on data volatility (see `src/config/cache.ts`)
 5. **Error Hierarchy:** Custom error classes for different failure scenarios
 
-## Key Features (16 MCP Tools)
+## Key Features (18 MCP Tools)
 
 1. **get_forecast** - 7-day forecasts (NOAA/Open-Meteo, auto-select by location) - Now supports saved locations via `location_name`
-2. **get_current_conditions** - Current weather + fire weather indices (NOAA, US only)
-3. **get_alerts** - Weather alerts/warnings (NOAA, US only)
-4. **get_historical_weather** - Historical data 1940-present (Open-Meteo, global)
-5. **check_service_status** - API health check (all services)
-6. **search_location** - Location search/geocoding (Nominatim/OSM, better small town coverage)
-7. **get_air_quality** - Air quality index + pollutants (Open-Meteo, global)
-8. **get_marine_conditions** - Wave height, swell, currents (Open-Meteo, global)
-9. **get_weather_imagery** - Weather radar/precipitation imagery (RainViewer, global)
-10. **get_lightning_activity** - Real-time lightning detection (Blitzortung.org, global)
-11. **get_river_conditions** - River levels and flood monitoring (NOAA/USGS, US only)
-12. **get_wildfire_info** - Active wildfire tracking (NIFC, US only)
-13. **save_location** - Save frequently used locations with aliases (NEW in v1.7.0)
-14. **list_saved_locations** - View all saved locations (NEW in v1.7.0)
-15. **get_saved_location** - Get details for a saved location (NEW in v1.7.0)
-16. **remove_saved_location** - Delete a saved location (NEW in v1.7.0)
+2. **get_forecast_nomads** - Raw forecast from the latest NOMADS/NCEP GFS model run (global)
+3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF proxy (Open-Meteo) forecasts side by side; HRRR is CONUS-only and opt-in
+4. **get_current_conditions** - Current weather + fire weather indices (NOAA, US only)
+5. **get_alerts** - Weather alerts/warnings (NOAA, US only)
+6. **get_historical_weather** - Historical data 1940-present (Open-Meteo, global)
+7. **check_service_status** - API health check (all services)
+8. **search_location** - Location search/geocoding (Nominatim/OSM, better small town coverage)
+9. **get_air_quality** - Air quality index + pollutants (Open-Meteo, global)
+10. **get_marine_conditions** - Wave height, swell, currents (Open-Meteo, global)
+11. **get_weather_imagery** - Weather radar/precipitation imagery (RainViewer, global)
+12. **get_lightning_activity** - Real-time lightning detection (Blitzortung.org, global)
+13. **get_river_conditions** - River levels and flood monitoring (NOAA/USGS, US only)
+14. **get_wildfire_info** - Active wildfire tracking (NIFC, US only)
+15. **save_location** - Save frequently used locations with aliases (NEW in v1.7.0)
+16. **list_saved_locations** - View all saved locations (NEW in v1.7.0)
+17. **get_saved_location** - Get details for a saved location (NEW in v1.7.0)
+18. **remove_saved_location** - Delete a saved location (NEW in v1.7.0)
 
 ## Development Guidelines
 
@@ -556,6 +564,6 @@ npm audit             # No critical vulnerabilities
 
 ---
 
-**Last Updated:** 2025-11-16 (v1.7.0 - saved locations with activities + Nominatim geocoding)
+**Last Updated:** 2026-09-11 (Unreleased - NOMADS model-run forecast, multi-model comparison with HRRR support, NAM grid/timezone fixes)
 
 This document should be updated whenever major architectural changes are made or new patterns are introduced.
