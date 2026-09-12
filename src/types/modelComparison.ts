@@ -1,4 +1,4 @@
-export type ComparisonModel = 'gfs' | 'nam' | 'ecmwf_proxy';
+export type ComparisonModel = 'gfs' | 'nam' | 'hrrr' | 'ecmwf_proxy';
 
 export interface ComparisonDayValues {
   temperatureHighF?: number;

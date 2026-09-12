@@ -55,10 +55,22 @@ interface ModelFetchConfig {
 
 const NOMADS_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl';
 const NAM_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_nam.pl';
+const HRRR_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_hrrr_2d.pl';
 const HOURS_PER_STEP = 6;
 const NAM_HOURS_PER_STEP = 3;
+const HRRR_HOURS_PER_STEP = 3;
 const MPS_TO_MPH = 2.2369362921;
 const MM_TO_IN = 0.0393701;
+
+// HRRR's CONUS domain, approximated as a bounding box for a cheap pre-check.
+// The actual grid is a Lambert Conformal Conic projection, not a rectangle,
+// so this is intentionally generous rather than exact.
+const HRRR_DOMAIN = {
+  minLatitude: 21,
+  maxLatitude: 53,
+  minLongitude: -134,
+  maxLongitude: -60,
+};
 
 export class NOMADSService {
   private readonly client: AxiosInstance;
@@ -114,6 +126,39 @@ export class NOMADSService {
       fileNameBuilder: (cycle: string, forecastHour: number) =>
         `nam.t${cycle}z.awphys${forecastHour.toString().padStart(2, '0')}.tm00.grib2`,
       directoryBuilder: (date: string) => `/nam.${date}`,
+    });
+  }
+
+  async getHrrrForecast(latitude: number, longitude: number, days: number): Promise<NomadsForecastResponse> {
+    validateLatitude(latitude);
+    validateLongitude(longitude);
+
+    if (
+      latitude < HRRR_DOMAIN.minLatitude ||
+      latitude > HRRR_DOMAIN.maxLatitude ||
+      longitude < HRRR_DOMAIN.minLongitude ||
+      longitude > HRRR_DOMAIN.maxLongitude
+    ) {
+      throw new InvalidLocationError(
+        'NOMADS',
+        'HRRR is limited to the continental US (CONUS) domain. Use GFS or NAM for this location.'
+      );
+    }
+
+    return this.getModelForecast(latitude, longitude, days, {
+      cachePrefix: 'nomads-hrrr-forecast',
+      modelLabel: 'NCEP HRRR 3km (CONUS)',
+      endpointUrl: HRRR_URL,
+      // HRRR posts a full 48h horizon only on the synoptic cycles (00/06/12/18Z),
+      // which is all availableCycles probes below — the intermediate hourly
+      // cycles only go out to 18h and are intentionally not used here.
+      horizonHours: 48,
+      stepHours: HRRR_HOURS_PER_STEP,
+      availableCycles: ['18', '12', '06', '00'],
+      candidateLookbackDays: 1,
+      fileNameBuilder: (cycle: string, forecastHour: number) =>
+        `hrrr.t${cycle}z.wrfsfcf${forecastHour.toString().padStart(2, '0')}.grib2`,
+      directoryBuilder: (date: string) => `/hrrr.${date}/conus`,
     });
   }
 

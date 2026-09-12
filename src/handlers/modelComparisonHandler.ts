@@ -18,7 +18,7 @@ function parseModels(models?: unknown): ComparisonModel[] {
     return ['gfs', 'nam', 'ecmwf_proxy'];
   }
 
-  const allowed = new Set<ComparisonModel>(['gfs', 'nam', 'ecmwf_proxy']);
+  const allowed = new Set<ComparisonModel>(['gfs', 'nam', 'hrrr', 'ecmwf_proxy']);
   const normalized = models
     .map((item) => String(item).trim().toLowerCase())
     .map((item) => (item === 'ecmwf' ? 'ecmwf_proxy' : item))
@@ -80,6 +80,8 @@ export async function handleGetModelComparisonForecast(
       if (!values) {
         if (series.model === 'nam') {
           output += `- **${series.label}:** N/A (NAM deterministic horizon limit ~84h)\n`;
+        } else if (series.model === 'hrrr') {
+          output += `- **${series.label}:** N/A (HRRR deterministic horizon limit ~48h)\n`;
         } else {
           output += `- **${series.label}:** N/A\n`;
         }
@@ -100,7 +102,7 @@ export async function handleGetModelComparisonForecast(
   }
 
   output += '---\n';
-  output += '*Comparison includes GFS and NAM model-run data from NOMADS. ECMWF line uses Open-Meteo proxy guidance for long-range context.*\n';
+  output += '*Comparison includes GFS, NAM, and HRRR model-run data from NOMADS. ECMWF line uses Open-Meteo proxy guidance for long-range context. HRRR is CONUS-only.*\n';
 
   return {
     content: [

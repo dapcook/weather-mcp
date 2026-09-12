@@ -36,6 +36,8 @@ export class ModelComparisonService {
             return await this.fetchGfsSeries(latitude, longitude, requestedDays);
           case 'nam':
             return await this.fetchNamSeries(latitude, longitude, requestedDays);
+          case 'hrrr':
+            return await this.fetchHrrrSeries(latitude, longitude, requestedDays);
           case 'ecmwf_proxy':
             return await this.fetchEcmwfProxySeries(latitude, longitude, requestedDays);
           default:
@@ -60,6 +62,11 @@ export class ModelComparisonService {
     const namSeries = series.find((item) => item.model === 'nam');
     if (namSeries) {
       notes.push('NAM deterministic horizon is limited to approximately 84 hours; later days are shown as N/A.');
+    }
+
+    const hrrrSeries = series.find((item) => item.model === 'hrrr');
+    if (hrrrSeries) {
+      notes.push('HRRR is CONUS-only and limited to a 48 hour horizon; later days are shown as N/A. Requests outside the continental US will fail for this model.');
     }
 
     const ecmwfSeries = series.find((item) => item.model === 'ecmwf_proxy');
@@ -102,6 +109,20 @@ export class ModelComparisonService {
       timezone: forecast.timezone,
       daily: this.convertNomadsDailyToMap(forecast.daily),
       note: 'Limited deterministic horizon (~84h).',
+    };
+  }
+
+  private async fetchHrrrSeries(latitude: number, longitude: number, days: number): Promise<ComparisonModelSeries> {
+    const forecast = await this.nomadsService.getHrrrForecast(latitude, longitude, days);
+
+    return {
+      model: 'hrrr',
+      label: 'HRRR (NOMADS)',
+      modelRun: forecast.model_run,
+      horizonHours: 48,
+      timezone: forecast.timezone,
+      daily: this.convertNomadsDailyToMap(forecast.daily),
+      note: 'CONUS-only, limited deterministic horizon (48h).',
     };
   }
 

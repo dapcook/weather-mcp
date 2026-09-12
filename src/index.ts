@@ -275,7 +275,7 @@ const TOOL_DEFINITIONS = {
 
   get_model_comparison_forecast: {
     name: 'get_model_comparison_forecast' as const,
-    description: 'Compare forecasts across multiple model sources in one response. Supports GFS (NOMADS), NAM (NOMADS, ~84h deterministic horizon), and ECMWF proxy guidance via Open-Meteo. For 7+ day requests, NAM values are shown through its horizon and then marked as N/A.',
+    description: 'Compare forecasts across multiple model sources in one response. Supports GFS (NOMADS), NAM (NOMADS, ~84h deterministic horizon), HRRR (NOMADS, CONUS-only, ~48h deterministic horizon), and ECMWF proxy guidance via Open-Meteo. For requests beyond a model\'s horizon, its values are shown through the horizon and then marked as N/A. HRRR requests outside the continental US will fail — use GFS or NAM for those locations.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -304,10 +304,10 @@ const TOOL_DEFINITIONS = {
         },
         models: {
           type: 'array' as const,
-          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf_proxy"]. You may also pass "ecmwf" and it will map to "ecmwf_proxy".',
+          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf_proxy"]. You may also pass "ecmwf" and it will map to "ecmwf_proxy". "hrrr" is opt-in only (not part of the default set) since it is CONUS-only.',
           items: {
             type: 'string' as const,
-            enum: ['gfs', 'nam', 'ecmwf_proxy', 'ecmwf']
+            enum: ['gfs', 'nam', 'hrrr', 'ecmwf_proxy', 'ecmwf']
           }
         }
       },
