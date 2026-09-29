@@ -14,9 +14,9 @@ Docker + Docker Compose, SD-card storage.
 | 1 | Fix the ARM crash in the GRIB (NOMADS) library | Done |
 | 2 | One server process for LLMs (`/mcp`) and the console | Done |
 | 3 | Docker packaging, tested on a Mac | Done |
-| 4 | Deploy to the Pi | Planned |
+| 4 | Deploy to the Pi | Done |
 | 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Planned |
-| 6 | Docs and PR | Planned |
+| 6 | Docs and PR | Done |
 
 Placeholders used below: `<pi-host>` (e.g. `raspberrypi.local`), `<pi-ip>` (its LAN address),
 `<pi-user>` (the login account on the Pi).
@@ -204,6 +204,22 @@ it is published for `cpu: wasm32`.
 5. Verify from the Mac: `/health`, the console in a browser, and Claude listing and
    calling tools.
 
+**Results** (Raspberry Pi 5, 8 GB, 64-bit Raspberry Pi OS, Docker 29.8 / Compose v5.5):
+- First `docker compose up -d --build` on the Pi: 51 s; the build logged "No native GRIB
+  decoder for aarch64; installing WebAssembly build 0.30.1". Container healthy within
+  seconds; image 415 MB as reported by the Pi's Docker.
+- The token was generated on the Pi straight into `.env` (mode 600) and never left it
+  except as an HTTP header during verification.
+- From the Mac over the LAN: `/health` 200; `/api/*` and `/mcp` 401 without the token;
+  with it, 18 tools over `/mcp`, current conditions and forecast by saved-location name,
+  and a GFS + HRRR model comparison decoded on the Pi (~16 s).
+- stdio fallback over SSH (`ssh <pi-user>@<pi-host> docker exec -i weather-mcp node
+  dist/index.js`): 18 tools, same saved locations.
+- Reachable as `http://<pi-host>:3003` and `http://<pi-ip>:3003`; an unlisted `Host`
+  header and a cross-site `Origin` both get 403.
+- Console loads from another device and shows the sign-in box; the page is not a secure
+  context over plain `http://`, so "Use my location" is hidden as designed.
+
 ## Phase 5: Optional extras
 
 - **HTTPS and remote access:** Tailscale on the Pi and client devices; `tailscale serve`
@@ -219,6 +235,20 @@ it is published for `cpu: wasm32`.
 
 README "Running in Docker / on a Raspberry Pi" section (including the client setup
 below), CHANGELOG entry, PR from `feat/docker-deployment`.
+
+**Results:**
+- `docs/DOCKER.md`: user guide (requirements, quick start, connecting clients, settings,
+  everyday commands, token replacement, saved locations and backups, security, Raspberry
+  Pi notes, troubleshooting, going back to local, how it works).
+- `docs/CLIENT_SETUP.md`: new "Connecting to a Remote Server (HTTP)" section (Claude Code,
+  Claude Desktop via `mcp-remote`, Cursor, VS Code, SSH fallback) and a "Remote Server Not
+  Connecting" troubleshooting entry. Claude Code and Claude Desktop were tested end to end;
+  the Cursor and VS Code examples follow those clients' documented formats and are marked
+  as untested.
+- README section right after the Web Console section, plus links from the client and
+  documentation lists; `docs/README.md` index; CHANGELOG; CLAUDE.md/AGENTS.md.
+- Verified while writing: editing `.env` then `docker compose up -d` recreates the
+  container with the new token (old token then returns 401).
 
 ---
 

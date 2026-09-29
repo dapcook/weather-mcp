@@ -355,6 +355,125 @@ Postman can integrate with existing MCP config files from Claude, VS Code, and o
 
 ---
 
+## Connecting to a Remote Server (HTTP)
+
+The setups above launch the server on the same computer as your AI client. You can instead run it once on another machine, such as a Raspberry Pi (see **[Running in Docker](./DOCKER.md)**), and connect every client to it over your network.
+
+Every client needs the same three things:
+
+| | |
+|---|---|
+| **URL** | `http://<host>:3003/mcp` (for example `http://raspberrypi.local:3003/mcp`) |
+| **Transport** | Streamable HTTP |
+| **Header** | `Authorization: Bearer <your token>` (the server's `WEATHER_MCP_TOKEN`) |
+
+> **Replace `<token>` with the real value** in every example below. A leftover placeholder is the most common reason for a `401` error.
+>
+> **Tested with:** Claude Code and Claude Desktop (through `mcp-remote`). The Cursor and VS Code examples follow those clients' documented formats but haven't been tested here.
+
+### Claude Code
+
+```bash
+claude mcp add --transport http --scope user weather http://raspberrypi.local:3003/mcp --header "Authorization: Bearer <token>"
+```
+
+Check it with `claude mcp list`; `weather` should show **✔ Connected**. To share a server with a project without putting the token in git, add a `.mcp.json` that reads it from an environment variable:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "type": "http",
+      "url": "http://raspberrypi.local:3003/mcp",
+      "headers": { "Authorization": "Bearer ${WEATHER_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Claude Desktop's config file can only launch local programs, so the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge relays to the server. In `claude_desktop_config.json` (see [Claude Desktop](#claude-desktop) for its location), replace or add the `weather` entry:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote@0.14.3",
+        "http://raspberrypi.local:3003/mcp",
+        "--allow-http",
+        "--header", "Authorization:${WEATHER_AUTH}"
+      ],
+      "env": { "WEATHER_AUTH": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Then fully quit and reopen Claude Desktop (<kbd>Cmd</kbd>+<kbd>Q</kbd> on macOS).
+
+- `--allow-http` is needed because `mcp-remote` only accepts plain `http://` for localhost unless told otherwise. If you serve the console over HTTPS (for example with Tailscale), use the `https://` address and drop that flag.
+- The token sits in `env`, and the header has no space after the colon, so the space inside `Bearer <token>` can't split the argument.
+- `mcp-remote@0.14.3` is the version tested here; pinning a version keeps `npx` from picking up changes unexpectedly.
+- To confirm the connection, look for *"Proxy established successfully"* in the log (macOS: `~/Library/Logs/Claude/mcp-server-weather.log`).
+
+### Cursor
+
+In `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "url": "http://raspberrypi.local:3003/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+### VS Code (GitHub Copilot)
+
+In `.vscode/mcp.json`. VS Code asks for the token once and stores it securely, so it never sits in the file:
+
+```json
+{
+  "inputs": [
+    { "type": "promptString", "id": "weather-token", "description": "Weather MCP token", "password": true }
+  ],
+  "servers": {
+    "weather": {
+      "type": "http",
+      "url": "http://raspberrypi.local:3003/mcp",
+      "headers": { "Authorization": "Bearer ${input:weather-token}" }
+    }
+  }
+}
+```
+
+### Any other client
+
+- **Clients that only launch local commands:** use the same `mcp-remote` command and `env` as the Claude Desktop example.
+- **No token or bridge:** run the server inside the container over SSH. Your SSH key is the credential:
+
+```json
+"weather": {
+  "command": "ssh",
+  "args": ["<user>@raspberrypi.local", "docker", "exec", "-i", "weather-mcp", "node", "dist/index.js"]
+}
+```
+
+### Things to know
+
+- **Use one `weather` entry per client.** If a client has both a local and a remote entry under different names, it sees two copies of every tool.
+- **Treat client config files like password files.** Claude Desktop and Cursor store the token in plain text.
+- **Claude on the web and mobile apps can't use this.** Their custom connectors are reached from Anthropic's servers, which would mean exposing your server to the internet.
+- **Switching back:** restore the local command entry (`npx -y @dangahagan/weather-mcp` or `node .../dist/index.js`).
+
+---
+
 ## Testing Your Setup
 
 After configuring any client, test the connection with these simple queries:
@@ -379,6 +498,14 @@ After configuring any client, test the connection with these simple queries:
 3. **Rebuild the project:** Run `npm run build` in the weather-mcp directory
 4. **Restart the client:** Most clients need a restart after configuration changes
 5. **Check logs:** Look for MCP-related errors in your client's console/logs
+
+### Remote Server Not Connecting
+
+1. **`401` or "Missing or invalid access token":** the token is wrong, or a placeholder such as `Bearer <token>` was left in the config. Compare it with `WEATHER_MCP_TOKEN` in the server's `.env`.
+2. **`403 Forbidden host`:** the hostname or IP in your URL isn't in the server's `WEB_ALLOWED_HOSTS`. Add it and run `docker compose up -d`.
+3. **Connection refused or timed out:** check that the container is running (`docker compose ps`), that you're on the same network, and that the port matches (`WEATHER_MCP_PORT`).
+4. **`.local` name not found:** not every device resolves mDNS names (some Android and Windows setups don't). Use the server's IP address and add it to `WEB_ALLOWED_HOSTS`.
+5. **Claude Desktop only:** it must be fully quit and reopened after editing the config, and `npx` must be on the PATH it launches with. The log will say if it couldn't start the command.
 
 ### Tools Not Appearing
 
@@ -410,5 +537,5 @@ After configuring any client, test the connection with these simple queries:
 
 If you encounter issues with this MCP server:
 1. Check the [main README](./README.md) for API limitations and requirements
-2. Review the [Testing Guide](./docs/TESTING_GUIDE.md) for debugging tips
+2. Review the [Testing Guide](./testing/TESTING_GUIDE.md) for debugging tips
 3. Open an issue on GitHub with details about your client and error messages

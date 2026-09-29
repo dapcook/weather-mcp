@@ -196,7 +196,7 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 
 ### Docker
 
-`Dockerfile` + `docker-compose.yml` run the web server (`/mcp` + console) in one container on port 3003, with saved locations on a `./data` volume and settings from `.env` (see `.env.example`). Plan, deployment steps, and client setup: `docs/planning/DOCKER_DEPLOYMENT_PLAN.md`.
+`Dockerfile` + `docker-compose.yml` run the web server (`/mcp` + console) in one container on port 3003, with saved locations on a `./data` volume and settings from `.env` (see `.env.example`). User guide (setup, settings, security, troubleshooting): `docs/DOCKER.md`; remote client configs: `docs/CLIENT_SETUP.md`; design and test results: `docs/planning/DOCKER_DEPLOYMENT_PLAN.md`. Keep `docs/DOCKER.md` in sync when the Dockerfile, compose file, or settings change.
 - Base is `node:22-bookworm-slim` (glibc; the GRIB decoder has no musl/Alpine builds)
 - The `deps` stage installs `@mattnucc/gribberish-wasm32-wasi` only when the native decoder won't load (e.g. `linux/arm64`); keep its version pinned to `@mattnucc/gribberish`
 - The container is hardened (non-root `node` user, read-only root filesystem, `cap_drop: ALL`); anything that writes files must use `WEATHER_MCP_DATA_DIR` (`/app/data`) or `/tmp`
@@ -677,6 +677,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
   - `README.md` — User-facing documentation
   - `CHANGELOG.md` — Version history
   - `docs/WEB_CONSOLE.md` — Web console and climate explorer user guide
+  - `docs/DOCKER.md` — Running in Docker / on a Raspberry Pi
   - `docs/development/CODE_REVIEW.md` — Code quality assessment
   - `docs/development/SECURITY_AUDIT_V1.6.md` — Security analysis
 

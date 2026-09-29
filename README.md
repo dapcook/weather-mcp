@@ -406,7 +406,7 @@ This MCP server works with any client that supports the Model Context Protocol, 
 - **LM Studio** - Local AI model interface
 - **Postman** - API platform with MCP integration
 
-For detailed setup instructions for each client, see **[CLIENT_SETUP.md](./docs/CLIENT_SETUP.md)**.
+For detailed setup instructions for each client, see **[CLIENT_SETUP.md](./docs/CLIENT_SETUP.md)**. To use a server running on another machine (for example in [Docker on a Raspberry Pi](./docs/DOCKER.md)), see [Connecting to a remote server](./docs/CLIENT_SETUP.md#connecting-to-a-remote-server-http).
 
 ### Quick Start: Claude Code
 
@@ -478,13 +478,30 @@ npm run web
 Then open http://127.0.0.1:8787.
 
 - **Uses the real MCP server.** The console talks to the MCP server through an in-process MCP client, exactly like an AI client does, so results match what an LLM would see.
-- **Also an MCP endpoint for AI clients.** The same server answers MCP over HTTP at `/mcp`, so AI clients on other machines can use the tools (e.g. `claude mcp add --transport http weather http://<host>:8787/mcp`). See the [Docker deployment plan](./docs/planning/DOCKER_DEPLOYMENT_PLAN.md) for running it on another machine such as a Raspberry Pi.
+- **Also an MCP endpoint for AI clients.** The same server answers MCP over HTTP at `/mcp`, so AI clients on other machines can use the tools (e.g. `claude mcp add --transport http weather http://<host>:8787/mcp`). See [Running in Docker](./docs/DOCKER.md) for running it on another machine such as a Raspberry Pi.
 - **Forms come from the tool schemas**, so new tools and parameters appear automatically.
 - **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
 - **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
 - **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
 - **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
 - **Local only by default:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations. To reach it from other devices, set `WEB_HOST=0.0.0.0`, list the names you'll use in `WEB_ALLOWED_HOSTS`, and set `WEATHER_MCP_TOKEN` to require a token (the console shows a sign-in box). Details in the [guide](./docs/WEB_CONSOLE.md#configuration).
+
+## Running in Docker (or on a Raspberry Pi)
+
+Run the server once on an always-on machine, such as a Raspberry Pi, and use it from every device on your network: AI clients connect to its `/mcp` endpoint, and you open the [web console](#web-console-use-the-tools-without-an-llm) in a browser. One container serves both, and saved locations are kept in a folder on the host.
+
+```bash
+git clone https://github.com/dapcook/weather-mcp.git && cd weather-mcp
+cp .env.example .env      # set WEATHER_MCP_TOKEN (openssl rand -hex 32) and WEB_ALLOWED_HOSTS
+mkdir -p data
+docker compose up -d --build
+```
+
+Then open `http://<host>:3003` and point your AI client at `http://<host>:3003/mcp`.
+
+- The image builds for `linux/amd64` and `linux/arm64`; it is tested on Apple Silicon and a Raspberry Pi 5 (64-bit OS).
+- The container is locked down (non-root, read-only filesystem, no extra capabilities) and requires a token for `/mcp` and the console's API. It's meant for a home network, not the internet.
+- Setup, settings, updating, backups, security, and troubleshooting are in **[docs/DOCKER.md](./docs/DOCKER.md)**; copy-paste client configs for Claude Desktop, Claude Code, Cursor, and VS Code are in [Connecting to a remote server](./docs/CLIENT_SETUP.md#connecting-to-a-remote-server-http).
 
 ## Available Tools
 
@@ -1385,6 +1402,7 @@ To report a security vulnerability, please see our [Security Policy](./SECURITY.
 
 **For Users:**
 - [Web Console Guide](./docs/WEB_CONSOLE.md) - Run tools and explore climate history in a browser, no AI client needed
+- [Running in Docker](./docs/DOCKER.md) - Run the server in a container (Raspberry Pi friendly) for all your devices
 - [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup instructions for 8 different MCP clients
 - [Testing Guide](./docs/testing/TESTING_GUIDE.md) - Manual testing procedures
 - [Error Handling](./docs/ERROR_HANDLING.md) - Enhanced error handling features

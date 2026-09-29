@@ -8,6 +8,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - **[../README.md](../README.md)** - Main project README with installation and usage instructions
 - **[CLIENT_SETUP.md](./CLIENT_SETUP.md)** - Setup guides for 8 different MCP clients
 - **[WEB_CONSOLE.md](./WEB_CONSOLE.md)** - Web console guide: run every tool in a browser and use the climate explorer
+- **[DOCKER.md](./DOCKER.md)** - Run the server in Docker (Raspberry Pi friendly): setup, settings, security, troubleshooting
 
 ### 📁 Analytics (`analytics/`)
 - **[ANALYTICS_MCP_PLAN.md](./analytics/ANALYTICS_MCP_PLAN.md)** - Privacy-first analytics implementation plan
@@ -16,6 +17,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 
 ### 📁 Planning (`planning/`)
 - **[IMPLEMENTATION_PLAN.md](./planning/IMPLEMENTATION_PLAN.md)** - Project implementation roadmap
+- **[DOCKER_DEPLOYMENT_PLAN.md](./planning/DOCKER_DEPLOYMENT_PLAN.md)** - Docker/Raspberry Pi deployment design, decisions, and test results
 - **[ROADMAP.md](./planning/ROADMAP.md)** - Project roadmap and future plans
 - **[FUTURE_ENHANCEMENTS.md](./planning/FUTURE_ENHANCEMENTS.md)** - Planned enhancements and features
 
