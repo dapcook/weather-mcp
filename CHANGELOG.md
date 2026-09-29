@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
 
 ### Fixed
+- **Wrong Dates and Times for Open-Meteo Data** - Open-Meteo returns local times without a UTC offset (`2026-09-28`, `2026-09-28T14:00`), which were read as the server's local time and then converted, shifting them whenever the server and location zones differ. Forecast day headers and hourly times for places west of the server showed the previous day/hours early (e.g. Denali's Monday shown as "Sunday, September 27", sunrise 3 hours early); marine forecast days were affected the same way
+  - Timezone helpers and the forecast/marine handlers now read offset-less times as local time at the location (Luxon `zone`), while times with an offset (NOAA) still convert
+  - `get_historical_weather` showed requested dates a day early for US servers (`new Date("2026-09-01")` is UTC midnight) and times in the server's zone; it now shows the requested dates as given and times in the location's timezone, with a Timezone line
+  - Regression tests pin Luxon's default zone to UTC+14 so they fail on the old behavior regardless of the machine's timezone
 - **NAM Grid Lookup** - Fixed `extractNearestValue` returning null/0 for all NAM fields (temperature, humidity, wind, precipitation). NAM's Lambert Conformal Conic grid is curvilinear (parallel flat lat/lon arrays), unlike GFS's separable regular lat/lon grid, so the previous `row * cols + col` index formula produced out-of-bounds lookups for NAM specifically
 - **Central US Timezone Mis-Bucketing** - Corrected timezone assignment for Central US locations that were being bucketed into the wrong US timezone
 

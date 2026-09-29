@@ -2,7 +2,8 @@
  * Unit tests for timezone utilities
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Settings } from 'luxon';
 import {
   formatInTimezone,
   formatDateInTimezone,
@@ -294,6 +295,41 @@ describe('Timezone Utilities', () => {
 
       expect(typeof result).toBe('string');
       expect(result).toContain('-'); // Should still have separator
+    });
+  });
+
+  describe('local times without a UTC offset (Open-Meteo timezone=auto)', () => {
+    // Pretend the server runs far from the location, so reading a local time
+    // in the server's zone (the old bug) would shift it by hours or a day
+    let originalZone: typeof Settings.defaultZone;
+    beforeEach(() => {
+      originalZone = Settings.defaultZone;
+      Settings.defaultZone = 'Pacific/Kiritimati'; // UTC+14
+    });
+    afterEach(() => {
+      Settings.defaultZone = originalZone;
+    });
+
+    it('keeps a date-only string on the same calendar day', () => {
+      expect(formatDateInTimezone('2026-09-28', 'America/Anchorage')).toBe('Sep 28, 2026');
+    });
+
+    it('keeps a local datetime at the same wall-clock time', () => {
+      const formatted = formatInTimezone('2026-09-28T14:00', 'America/Anchorage', 'short');
+      expect(formatted).toContain('9/28/2026');
+      expect(formatted).toContain('2:00');
+    });
+
+    it('still converts strings that carry an offset', () => {
+      // 14:00 UTC is 06:00 in Anchorage (AKDT, UTC-8)
+      expect(formatInTimezone('2026-09-28T14:00:00+00:00', 'America/Anchorage', 'short')).toContain('6:00');
+    });
+
+    it('formats offset-less ranges in the location timezone', () => {
+      const range = formatTimeRangeInTimezone('2026-09-28T09:00', '2026-09-28T17:00', 'America/Anchorage');
+      expect(range).toContain('Sep 28, 2026');
+      expect(range).toContain('9:00');
+      expect(range).toContain('5:00');
     });
   });
 

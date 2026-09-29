@@ -7,6 +7,12 @@ import { OpenMeteoService } from '../services/openmeteo.js';
 import { validateHistoricalWeatherParams } from '../utils/validation.js';
 import { convertToFahrenheit } from '../utils/temperatureConversion.js';
 import { ApiConstants, FormatConstants } from '../config/displayThresholds.js';
+import { formatDateInTimezone, formatInTimezone, guessTimezoneFromCoords } from '../utils/timezone.js';
+
+/** The requested dates as the user gave them (not shifted by any timezone) */
+function formatPeriod(startDate: string, endDate: string, timezone: string): string {
+  return `${formatDateInTimezone(startDate.split('T')[0], timezone)} to ${formatDateInTimezone(endDate.split('T')[0], timezone)}`;
+}
 
 export async function handleGetHistoricalWeather(
   args: unknown,
@@ -53,15 +59,15 @@ export async function handleGetHistoricalWeather(
       if (useHourly && weatherData.hourly) {
         // Format hourly observations
         let output = `# Historical Weather Observations (Hourly)\n\n`;
-        output += `**Period:** ${startTime.toLocaleDateString()} to ${endTime.toLocaleDateString()}\n`;
+        output += `**Period:** ${formatPeriod(start_date, end_date, weatherData.timezone)}\n`;
         output += `**Location:** ${weatherData.latitude.toFixed(4)}°N, ${Math.abs(weatherData.longitude).toFixed(4)}°${weatherData.longitude >= 0 ? 'E' : 'W'} (${weatherData.elevation}m elevation)\n`;
+        output += `**Timezone:** ${weatherData.timezone}\n`;
         output += `**Number of observations:** ${weatherData.hourly.time.length}\n`;
         output += `**Data source:** Open-Meteo Historical Weather API (Reanalysis)\n\n`;
 
         const maxObservations = Math.min(limit, weatherData.hourly.time.length);
         for (let i = 0; i < maxObservations; i++) {
-          const time = new Date(weatherData.hourly.time[i]);
-          output += `## ${time.toLocaleString()}\n`;
+          output += `## ${formatInTimezone(weatherData.hourly.time[i], weatherData.timezone, 'short')}\n`;
 
           if (weatherData.hourly.temperature_2m?.[i] !== null && weatherData.hourly.temperature_2m?.[i] !== undefined) {
             output += `- **Temperature:** ${Math.round(weatherData.hourly.temperature_2m[i])}°F\n`;
@@ -118,14 +124,14 @@ export async function handleGetHistoricalWeather(
       } else if (weatherData.daily) {
         // Format daily summaries
         let output = `# Historical Weather Data (Daily Summaries)\n\n`;
-        output += `**Period:** ${startTime.toLocaleDateString()} to ${endTime.toLocaleDateString()}\n`;
+        output += `**Period:** ${formatPeriod(start_date, end_date, weatherData.timezone)}\n`;
         output += `**Location:** ${weatherData.latitude.toFixed(4)}°N, ${Math.abs(weatherData.longitude).toFixed(4)}°${weatherData.longitude >= 0 ? 'E' : 'W'} (${weatherData.elevation}m elevation)\n`;
+        output += `**Timezone:** ${weatherData.timezone}\n`;
         output += `**Number of days:** ${weatherData.daily.time.length}\n`;
         output += `**Data source:** Open-Meteo Historical Weather API (Reanalysis)\n\n`;
 
         for (let i = 0; i < weatherData.daily.time.length; i++) {
-          const date = new Date(weatherData.daily.time[i]);
-          output += `## ${date.toLocaleDateString()}\n`;
+          output += `## ${formatDateInTimezone(weatherData.daily.time[i], weatherData.timezone)}\n`;
 
           if (weatherData.daily.temperature_2m_max?.[i] !== null && weatherData.daily.temperature_2m_max?.[i] !== undefined) {
             output += `- **High Temperature:** ${Math.round(weatherData.daily.temperature_2m_max[i])}°F\n`;
@@ -195,15 +201,27 @@ export async function handleGetHistoricalWeather(
       };
     }
 
+    // NOAA timestamps carry a UTC offset; show them in the location's timezone
+    let timezone = guessTimezoneFromCoords(latitude, longitude);
+    try {
+      const points = await noaaService.getPointData(latitude, longitude);
+      if (points.properties.timeZone) {
+        timezone = points.properties.timeZone;
+      }
+    } catch {
+      // Use the coordinate-based guess
+    }
+
     // Format the observations
     let output = `# Historical Weather Observations\n\n`;
-    output += `**Period:** ${startTime.toLocaleDateString()} to ${endTime.toLocaleDateString()}\n`;
+    output += `**Period:** ${formatPeriod(start_date, end_date, timezone)}\n`;
+    output += `**Timezone:** ${timezone}\n`;
     output += `**Number of observations:** ${observations.features.length}\n`;
     output += `**Data source:** NOAA Real-time API\n\n`;
 
     for (const obs of observations.features) {
       const props = obs.properties;
-      output += `## ${new Date(props.timestamp).toLocaleString()}\n`;
+      output += `## ${formatInTimezone(props.timestamp, timezone, 'short')}\n`;
 
       if (props.temperature.value !== null) {
         const tempF = convertToFahrenheit(props.temperature.value, props.temperature.unitCode);
