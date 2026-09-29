@@ -1,6 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { DateTime } from 'luxon';
-import { parseMessagesFromBuffer } from '@mattnucc/gribberish';
 import { Cache } from '../utils/cache.js';
 import { CacheConfig } from '../config/cache.js';
 import { validateLatitude, validateLongitude } from '../utils/validation.js';
@@ -14,6 +13,7 @@ import {
   ServiceUnavailableError,
 } from '../errors/ApiError.js';
 import type { NomadsForecastResponse } from '../types/nomads.js';
+import { logger } from '../utils/logger.js';
 
 interface NomadsServiceConfig {
   timeout?: number;
@@ -51,6 +51,42 @@ interface ModelFetchConfig {
   candidateLookbackDays: number;
   fileNameBuilder: (cycle: string, forecastHour: number) => string;
   directoryBuilder: (date: string, cycle: string) => string;
+}
+
+type GribParser = (buffer: Buffer) => GribMessage[];
+
+let gribParserPromise: Promise<GribParser> | null = null;
+
+/**
+ * Load the GRIB decoder on first use.
+ *
+ * @mattnucc/gribberish is a native module with prebuilt binaries for only some
+ * platforms (none for linux-arm64, e.g. a Raspberry Pi). Importing it at module
+ * load would stop the whole MCP server from starting there; loading it lazily
+ * limits the failure to NOMADS requests. The result, success or failure, is
+ * cached because the platform won't change while the process runs.
+ */
+export function loadGribParser(): Promise<GribParser> {
+  gribParserPromise ??= import('@mattnucc/gribberish')
+    .then((grib) => (buffer: Buffer) => grib.parseMessagesFromBuffer(buffer) as unknown as GribMessage[])
+    .catch((error: unknown) => {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      logger.error('GRIB decoder unavailable; NOMADS model data disabled', cause, {
+        platform: `${process.platform}-${process.arch}`,
+      });
+      throw new ServiceUnavailableError(
+        'NOMADS',
+        `NOMADS model data is unavailable on this platform (${process.platform}-${process.arch}): ` +
+          'the GRIB decoder could not be loaded. Other forecast sources still work.',
+        cause
+      );
+    });
+  return gribParserPromise;
+}
+
+/** Test hook: forget a cached load result */
+export function resetGribParserForTesting(): void {
+  gribParserPromise = null;
 }
 
 const NOMADS_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl';
@@ -182,12 +218,15 @@ export class NOMADSService {
       }
     }
 
-    const run = await this.findLatestAvailableRun(latitude, longitude, model);
+    // Fail fast with a clear error if the decoder can't load; otherwise the run
+    // probe below would swallow each decode failure and report runs unreachable
+    const parseGrib = await loadGribParser();
+    const run = await this.findLatestAvailableRun(latitude, longitude, model, parseGrib);
     const maxForecastHour = Math.min(clampedDays * 24, model.horizonHours);
     const points: TimeStepData[] = [];
 
     for (let hour = 0; hour <= maxForecastHour; hour += model.stepHours) {
-      const messages = await this.fetchForecastMessages(run.date, run.cycle, hour, latitude, longitude, model);
+      const messages = await this.fetchForecastMessages(run.date, run.cycle, hour, latitude, longitude, model, parseGrib);
       const point = this.extractPointData(messages, latitude, longitude, run.referenceDate, hour);
       points.push(point);
     }
@@ -215,7 +254,8 @@ export class NOMADSService {
   private async findLatestAvailableRun(
     latitude: number,
     longitude: number,
-    model: ModelFetchConfig
+    model: ModelFetchConfig,
+    parseGrib: GribParser
   ): Promise<{ date: string; cycle: string; referenceDate: Date }> {
     const now = DateTime.utc();
     const candidateDates = Array.from({ length: model.candidateLookbackDays + 1 }, (_, idx) =>
@@ -229,7 +269,7 @@ export class NOMADSService {
         const probeHour = model.stepHours;
 
         try {
-          const messages = await this.fetchForecastMessages(dateStr, cycle, probeHour, latitude, longitude, model);
+          const messages = await this.fetchForecastMessages(dateStr, cycle, probeHour, latitude, longitude, model, parseGrib);
 
           if (messages.length > 0) {
             const referenceDate = DateTime.fromFormat(`${dateStr}${cycle}`, 'yyyyLLddHH', { zone: 'utc' }).toJSDate();
@@ -253,7 +293,8 @@ export class NOMADSService {
     forecastHour: number,
     latitude: number,
     longitude: number,
-    model: ModelFetchConfig
+    model: ModelFetchConfig,
+    parseGrib: GribParser
   ): Promise<GribMessage[]> {
     const file = model.fileNameBuilder(cycle, forecastHour);
 
@@ -281,7 +322,7 @@ export class NOMADSService {
       throw new DataNotFoundError('NOMADS', `NOMADS data file unavailable for ${file}`);
     }
 
-    return parseMessagesFromBuffer(raw) as unknown as GribMessage[];
+    return parseGrib(raw);
   }
 
   private async requestWithRetry(endpointUrl: string, params: Record<string, string>, retries = 0): Promise<Buffer> {

@@ -1,0 +1,257 @@
+# Docker Deployment Plan (Raspberry Pi)
+
+**Goal:** Run the Weather MCP server and the web console in one Docker container on a
+Raspberry Pi, so AI clients (Claude Desktop, Claude Code) use the tools over the network
+and people use the console from any browser on the home network.
+
+**Target:** Raspberry Pi 5 (8 GB), 64-bit Raspberry Pi OS (Debian 12 "Bookworm", `linux/arm64`),
+Docker + Docker Compose, SD-card storage.
+
+**Branch:** `feat/docker-deployment`
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Fix the ARM crash in the GRIB (NOMADS) library | Done |
+| 2 | One server process for LLMs (`/mcp`) and the console | Planned |
+| 3 | Docker packaging, tested on a Mac | Planned |
+| 4 | Deploy to the Pi | Planned |
+| 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Planned |
+| 6 | Docs and PR | Planned |
+
+Placeholders used below: `<pi-host>` (e.g. `raspberrypi.local`), `<pi-ip>` (its LAN address),
+`<pi-user>` (the login account on the Pi).
+
+---
+
+## Architecture
+
+```
+  Your Mac                                  Raspberry Pi
+ ┌────────────────────────┐        ┌──────────────────────────────────────────┐
+ │ Claude Desktop ────────┼──┐     │  container "weather-mcp"  (port 3003)    │
+ │  (mcp-remote bridge)   │  │     │  ┌────────────────────────────────────┐  │
+ │ Claude Code CLI ───────┼──┼──►  │  │ one Node process                   │  │
+ │                        │  │ /mcp│  │  /mcp     ← LLMs (HTTP + token)    │  │
+ │ Browser ───────────────┼──┼──►  │  │  /        ← web console page       │  │
+ └────────────────────────┘  │ /   │  │  /api/*   ← console's tool calls   │  │
+  Phone / iPad browser ──────┘     │  │  /health  ← Docker health check    │  │
+                                   │  │  shared: cache, saved locations    │  │
+                                   │  └──────────────┬─────────────────────┘  │
+                                   │   ~/WeatherMCP/data ↔ /app/data (volume) │
+                                   └──────────────────┼───────────────────────┘
+                                                      ▼
+                                    NOAA, Open-Meteo, NOMADS, RainViewer, …
+```
+
+One process serves both people and LLMs. The console calls tools through an in-process
+MCP client (the SDK's in-memory transport), so it exercises the same code path an AI
+client does, and everything shares one cache and one saved-locations file.
+
+---
+
+## Phase 1: Fix the ARM crash (prerequisite)
+
+**Problem:** `@mattnucc/gribberish` (GRIB decoding for NOMADS/model comparison) ships native
+builds only for `linux-x64-gnu`, macOS and Windows. There is no `linux-arm64` build.
+`src/services/nomads.ts` imports it at module load, so on ARM Linux the whole MCP server
+fails to start, taking down all tools, not just the NOMADS ones. The package has a
+WebAssembly fallback (`@mattnucc/gribberish-wasm32-wasi`), but npm skips it on ARM because
+it is published for `cpu: wasm32`.
+
+**Work:**
+- Load gribberish lazily on first use. If it can't load, only `get_forecast_nomads`,
+  `get_model_comparison_forecast` (NOMADS models) and NOMADS-sourced `get_forecast`
+  report "model data unavailable on this platform"; every other tool keeps working.
+- Make GRIB decoding work on ARM:
+  - First choice: install the WebAssembly fallback in the image.
+  - Fallback: compile gribberish for `aarch64` in a Rust build stage.
+- Verify in a `linux/arm64` container (Docker on Apple Silicon runs the same platform as
+  the Pi) and time a model comparison.
+- Test that a missing GRIB binding doesn't stop the server from starting.
+
+**Results:**
+- Reproduced in a `linux/arm64` `node:22-bookworm-slim` container: the server exited at
+  startup with `Cannot find module '@mattnucc/gribberish-linux-arm64-gnu'`.
+- `src/services/nomads.ts` now loads the decoder with a dynamic `import()` on first use
+  (`loadGribParser()`, result cached). `getModelForecast` loads it before probing model
+  runs, because the run probe swallows errors and would otherwise download several files
+  and report "runs were not reachable".
+- Without a decoder: all 18 tools load, other tools work, NOMADS requests fail immediately
+  with "NOMADS model data is unavailable on this platform (linux-arm64)…". Model
+  comparison notes now show that reason (they used `ApiError.message`, a generic summary,
+  instead of `userMessage`).
+- **Decision: WebAssembly fallback.** Installing `@mattnucc/gribberish-wasm32-wasi` (same
+  version as `@mattnucc/gribberish`) makes NOMADS work on `linux/arm64`. Output was
+  byte-identical to the native macOS decoder for the same model runs, and timing matched
+  (model comparison ~14 s either way; most of it is download time, since requests fetch
+  only a ±2° subregion). No Rust build stage needed. The image install step (Phase 3):
+  `npm install --no-save --force @mattnucc/gribberish-wasm32-wasi@<gribberish version>`
+  (`--force` gets past npm's `cpu: wasm32` platform check).
+- **Lock file fix:** `package-lock.json` had been out of sync with `package.json` since
+  the gribberish dependency was added, so `npm ci` failed everywhere. It also lacked the
+  `@emnapi/core`/`@emnapi/runtime` peers the WebAssembly runtime needs. Regenerated with
+  npm 10 (Node 22's bundled npm); `npm ci` now passes with both npm 10 and npm 11.
+- Tests: `tests/unit/nomads-grib-loading.test.ts` (module loads without a decoder, clear
+  error, no network request, failure cached, parser delegates when available).
+- Unrelated observation: NAM runs returned "model file not found" from NOMADS during
+  testing with both decoders, i.e. upstream availability, not this change.
+
+## Phase 2: One server for LLMs and the console
+
+- Split `src/index.ts` into a reusable `createMcpServer()` (tool registry + handlers).
+  `node dist/index.js` (stdio) keeps working unchanged for local use.
+- `src/web/server.ts` serves:
+  - `/mcp`: Streamable HTTP MCP endpoint (SDK transport, stateless)
+  - `/`: the console page
+  - `/api/*`: console tool calls via an in-process MCP client (no child process)
+  - `/health`: container health check
+- `LocationStore` gains a configurable data directory (default stays `~/.weather-mcp`).
+- Security:
+  - Host allowlist on `/mcp` and `/api` (DNS-rebinding protection)
+  - Origin checks on console routes
+  - Optional bearer token (`WEATHER_MCP_TOKEN`) required on `/mcp` and `/api` when set
+- Console: prompts for the token on `401` and remembers it; hides "Use my location" when
+  the page isn't a secure context (plain `http://` on the LAN).
+- Tests: config parsing, host/token checks, and an SDK client connecting to `/mcp` and
+  listing tools.
+
+**Settings (environment variables):**
+
+| Variable | Local default | In the container |
+|---|---|---|
+| `WEB_PORT` | `8787` | `3003` |
+| `WEB_HOST` | `127.0.0.1` | `0.0.0.0` |
+| `WEB_ALLOWED_HOSTS` | `localhost,127.0.0.1` | `<pi-host>,<pi-ip>` (+ any friendly names) |
+| `WEATHER_MCP_TOKEN` | unset (no auth) | long random string |
+| `WEATHER_MCP_DATA_DIR` | `~/.weather-mcp` | `/app/data` |
+| `ENABLED_TOOLS` | `all` | `all` |
+
+## Phase 3: Docker packaging (built and tested on a Mac)
+
+- `Dockerfile`, multi-stage on `node:22-bookworm-slim` (Debian/glibc, not Alpine: the GRIB
+  library's Linux builds are glibc only):
+  - Build stage: `npm ci`, `tsc`, plus the Phase 1 ARM fix.
+  - Runtime stage: production dependencies, `dist/`, `web/`.
+  - Runs as the non-root `node` user (uid 1000), `EXPOSE 3003`, Node-based `HEALTHCHECK`
+    (slim images have no `curl`).
+- `docker-compose.yml`:
+
+  | Setting | Value |
+  |---|---|
+  | Container name | `weather-mcp` |
+  | Port | `3003:3003` |
+  | Data | `./data:/app/data` |
+  | Settings | `env_file: .env` |
+  | Restart | `unless-stopped` |
+  | Memory cap | `768m` |
+  | Logging | `json-file`, `max-size: 10m`, `max-file: 3` (protects the SD card) |
+  | Hardening | `read_only` root filesystem + `tmpfs /tmp`, `cap_drop: [ALL]`, `no-new-privileges` |
+
+- `.dockerignore` (excludes `.env`, `node_modules`, `.git`, coverage/test output) and
+  `.env.example` documenting every setting.
+- Test on the Mac: `docker compose up`, console at `http://localhost:3003`, Claude Code
+  against `http://localhost:3003/mcp`.
+
+## Phase 4: Deploy to the Pi
+
+1. `git clone https://github.com/dapcook/weather-mcp.git ~/WeatherMCP` and check out the
+   branch (public repo; no credentials needed on the Pi).
+2. Create `~/WeatherMCP/.env` from `.env.example`; generate the token with
+   `openssl rand -hex 32`.
+3. `mkdir -p ~/WeatherMCP/data`. Optionally copy existing saved locations:
+   `scp ~/.weather-mcp/locations.json <pi-user>@<pi-host>:WeatherMCP/data/`.
+   From then on the Pi's copy is the one in use.
+4. `docker compose up -d --build` (a few minutes on a Pi 5).
+5. Verify from the Mac: `/health`, the console in a browser, and Claude listing and
+   calling tools.
+
+## Phase 5: Optional extras
+
+- **HTTPS and remote access:** Tailscale on the Pi and client devices; `tailscale serve`
+  gives an `https://<machine>.<tailnet>.ts.net` address. That enables "Use my location" and
+  Copy (browsers require HTTPS for both) and works away from home without opening router
+  ports. Useful when ports 80/443 are already taken on the Pi (e.g. by Pi-hole).
+- **Friendly name:** a local DNS record (e.g. Pi-hole Local DNS: `weather.home → <pi-ip>`).
+- **Dashboard link:** add a tile to a home dashboard.
+- **Local models:** any MCP-capable chat client (e.g. one used with Ollama) can connect to
+  the same `/mcp` endpoint.
+
+## Phase 6: Docs and PR
+
+README "Running in Docker / on a Raspberry Pi" section (including the client setup
+below), CHANGELOG entry, PR from `feat/docker-deployment`.
+
+---
+
+## Using it
+
+### Connecting AI clients
+
+**Claude Desktop** (chat and Code tab). Its config only launches local programs, so the
+`mcp-remote` bridge connects it to the Pi. In
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote@<pinned-version>", "http://<pi-host>:3003/mcp",
+               "--allow-http", "--header", "Authorization:${WEATHER_AUTH}"],
+      "env": { "WEATHER_AUTH": "Bearer <token>" }
+    }
+  }
+}
+```
+
+Restart Claude Desktop afterwards. `--allow-http` is required because `mcp-remote` only allows
+plain `http://` for localhost; with Tailscale HTTPS, drop it and use the `https://…/mcp`
+address. To go back to local, restore the `node …/dist/index.js` entry.
+
+**Claude Code CLI** connects over HTTP directly:
+
+```bash
+claude mcp add --transport http --scope user weather http://<pi-host>:3003/mcp --header "Authorization: Bearer <token>"
+```
+
+**Fallback (no token, no bridge): stdio over SSH**, using existing SSH key access:
+
+```json
+"weather": { "command": "ssh", "args": ["<pi-user>@<pi-host>", "docker", "exec", "-i", "weather-mcp", "node", "dist/index.js"] }
+```
+
+Each session then runs its own server process inside the container, with a cache separate
+from the console's.
+
+### Using the web console
+
+- Home network: `http://<pi-host>:3003`. Devices with unreliable `.local` name support
+  (some Android/Windows) can use `http://<pi-ip>:3003` or a local DNS name.
+- The first visit asks for the token (if set); the browser remembers it.
+- Over plain `http`, everything works except "Use my location" and Copy, which need HTTPS.
+
+### Container commands (on the Pi, in `~/WeatherMCP`)
+
+| Task | Command |
+|---|---|
+| Status / health | `docker compose ps` · `curl http://localhost:3003/health` |
+| Live logs | `docker compose logs -f` |
+| Restart | `docker compose restart` |
+| Update to latest code | `git pull && docker compose up -d --build` |
+| Change settings | edit `.env`, then `docker compose up -d` |
+| Stop / start | `docker compose down` · `docker compose up -d` |
+| Shell inside | `docker exec -it weather-mcp sh` |
+| Back up saved locations | copy `~/WeatherMCP/data/locations.json` |
+
+---
+
+## Risks and decisions
+
+- **WebAssembly GRIB speed on the Pi (Phase 1):** if model comparisons are too slow, switch
+  to compiling the native library (longer first build).
+- **`mcp-remote`** is a third-party package run by `npx` on the client; pin a version.
+- **Pi down = no weather tools in Claude.** Keep the local stdio entry handy for rollback.
+- **Saved locations** live only on the Pi after the switch; anything saved locally
+  afterwards won't sync.
+- **Log growth:** containers without log limits grow logs indefinitely on the SD card;
+  the compose file sets limits for this container.

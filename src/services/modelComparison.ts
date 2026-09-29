@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { NOMADSService } from './nomads.js';
 import { OpenMeteoService } from './openmeteo.js';
+import { ApiError } from '../errors/ApiError.js';
 import type {
   ComparisonModel,
   ComparisonModelSeries,
@@ -44,7 +45,11 @@ export class ModelComparisonService {
             return null;
         }
       } catch (error) {
-        notes.push(`${model.toUpperCase()} unavailable: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // ApiError.message is a generic summary; userMessage says what went wrong
+        const reason = error instanceof ApiError ? error.userMessage
+          : error instanceof Error ? error.message
+          : 'Unknown error';
+        notes.push(`${model.toUpperCase()} unavailable: ${reason}`);
         return null;
       }
     });
