@@ -465,16 +465,22 @@ your_tool: {
   - Example: `save_location(alias="cabin", activities=["boating", "fishing"])` updates activities while preserving all location data
   - New locations still require location_query or lat/long
 
-### Currently Supported Tools
+### Supported Tools
 
-- ✅ `get_forecast` - Full support for `location_name`
+Every tool that takes coordinates also accepts `location_name`:
 
-**Coming Soon:**
-- `get_current_conditions`
-- `get_alerts`
-- `get_air_quality`
-- `get_marine_conditions`
-- All other weather tools
+- `get_forecast`, `get_forecast_nomads`, `get_model_comparison_forecast` resolve it
+  in their handlers with `resolveLocation()` (see the recipe above).
+- All other coordinate-based tools (`get_current_conditions`, `get_alerts`,
+  `get_historical_weather`, `get_air_quality`, `get_marine_conditions`,
+  `get_weather_imagery`, `get_lightning_activity`, `get_river_conditions`,
+  `get_wildfire_info`) are listed in `SAVED_LOCATION_TOOLS` in `src/index.ts`.
+  `applySavedLocation()` swaps the saved name for its coordinates before the
+  handler runs, so those handlers need no changes.
+
+**Adding a new coordinate-based tool:** add `location_name` to its schema (and drop
+`latitude`/`longitude` from `required`), then either add it to `SAVED_LOCATION_TOOLS`
+or call `resolveLocation()` in its handler.
 
 ## Common Tasks
 

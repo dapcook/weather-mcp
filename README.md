@@ -487,8 +487,9 @@ Then open http://127.0.0.1:8787.
 Get weather forecast for any location worldwide.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `days` (optional): Number of days in forecast (1-16, default: 7)
 - `granularity` (optional): "daily" or "hourly" (default: "daily")
 - `include_precipitation_probability` (optional): Include rain chances (default: true)
@@ -521,8 +522,9 @@ Automatically selects the best data source: NOAA for US locations (more detailed
 Get current weather conditions for a location (US only).
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `include_fire_weather` (optional): Include fire weather indices (default: false)
 - `include_normals` (optional): Include climate normals for comparison (default: false, NEW in v1.2.0)
 
@@ -571,8 +573,9 @@ Converts location names to coordinates using the Open-Meteo Geocoding API. Retur
 Get active weather alerts, watches, warnings, and advisories for US locations.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `active_only` (optional): Show only active alerts (default: true)
 
 **Description:**
@@ -597,8 +600,9 @@ Retrieves current weather alerts from the NOAA API for safety-critical weather i
 Get historical weather observations for a location.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `start_date` (required): Start date in ISO format (YYYY-MM-DD)
 - `end_date` (required): End date in ISO format (YYYY-MM-DD)
 - `limit` (optional): Max observations to return (1-500, default: 168)
@@ -656,8 +660,9 @@ If you get "No historical data available":
 Get comprehensive air quality data for any location worldwide.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `forecast` (optional): Include hourly forecast for next 5 days (default: false)
 
 **Description:**
@@ -702,8 +707,9 @@ Check if the weather services are operational
 Get marine weather conditions including wave height, swell, ocean currents, and sea state with automatic source selection for Great Lakes and coastal bays.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `forecast` (optional): Include 5-day marine forecast (default: false)
 
 **Description:**
@@ -735,8 +741,9 @@ Provides comprehensive marine weather data with intelligent dual-source support:
 Get weather radar and precipitation imagery for visual weather analysis.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `type` (required): Imagery type - "precipitation", "radar", or "satellite" (Note: satellite not yet implemented)
 - `animated` (optional): Return animated loop vs static image (default: false)
 - `layers` (optional): Additional map layers (reserved for future use)
@@ -765,8 +772,9 @@ Provides access to weather radar and precipitation imagery from RainViewer API w
 Get real-time lightning strike detection and safety assessment for outdoor activity planning.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 100)
 - `timeWindow` (optional): Historical time window in minutes (1-180, default: 60)
 
@@ -806,8 +814,9 @@ Provides real-time lightning strike detection from the Blitzortung.org global li
 Monitor river levels and flood status using NOAA and USGS data sources.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 50)
 
 **Description:**
@@ -837,8 +846,9 @@ Provides comprehensive river and streamflow monitoring for flood safety and recr
 Monitor active wildfires and fire perimeters for safety and evacuation planning.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 100)
 
 **Description:**
@@ -1045,10 +1055,9 @@ get_forecast(location_name="home")
 "Are there any weather alerts for my work location?"
 ```
 
-**Currently Supported Tools:**
-- `get_forecast` - Weather forecasts using saved locations
+**Supported Tools:** every tool that takes coordinates: `get_forecast`, `get_forecast_nomads`, `get_model_comparison_forecast`, `get_current_conditions`, `get_alerts`, `get_historical_weather`, `get_air_quality`, `get_marine_conditions`, `get_weather_imagery`, `get_lightning_activity`, `get_river_conditions`, and `get_wildfire_info`.
 
-**Coming Soon:** Support for saved locations in all weather tools (current conditions, alerts, air quality, marine conditions, etc.)
+If you pass both `location_name` and coordinates, the saved location wins.
 
 ## Error Handling & Service Status
 

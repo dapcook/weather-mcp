@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Saved Locations in Every Tool** - `location_name` now works with all coordinate-based tools, not just forecasts: `get_current_conditions`, `get_alerts`, `get_historical_weather`, `get_air_quality`, `get_marine_conditions`, `get_weather_imagery`, `get_lightning_activity`, `get_river_conditions`, and `get_wildfire_info` (resolved centrally via `applySavedLocation()`). Calling a tool with no location now explains both options instead of reporting an invalid latitude
 - **NOMADS Model-Run Forecasts** - New `get_forecast_nomads` tool returns a forecast straight from the latest NOMADS/NCEP GFS model run (daily high/low, precipitation chance/total, peak wind, average humidity), rather than the blended data used by `get_forecast`
 - **Multi-Model Comparison** - New `get_model_comparison_forecast` tool compares GFS, NAM, and ECMWF proxy (Open-Meteo) forecasts side by side for the same location/dates, including horizon notes (e.g. NAM's ~84h deterministic cutoff)
 - **HRRR Model Support** - Added NCEP HRRR (3km, CONUS-only) as an opt-in model in `get_model_comparison_forecast`
