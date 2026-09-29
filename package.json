@@ -20,6 +20,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "web": "npm run build && node dist/web/server.js",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",

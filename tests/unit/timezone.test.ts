@@ -2,7 +2,8 @@
  * Unit tests for timezone utilities
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { Settings } from 'luxon';
 import {
   formatInTimezone,
   formatDateInTimezone,
@@ -187,21 +188,38 @@ describe('Timezone Utilities', () => {
       expect(result).toBe('America/New_York');
     });
 
-    it('should guess timezone from Central US coords', () => {
-      // Note: guessTimezoneFromCoords uses simple longitude boundaries
-      // Chicago at -87.6298 falls into Denver zone due to >= -104 check
+    it('should guess Chicago timezone from Central US coords', () => {
       const result = guessTimezoneFromCoords(41.8781, -87.6298); // Chicago coords
 
-      // Should return a valid US timezone
-      expect(result).toMatch(/America\/(New_York|Chicago|Denver|Los_Angeles)/);
+      expect(result).toBe('America/Chicago');
     });
 
-    it('should guess timezone from Mountain coords', () => {
-      // Denver at -104.9903 falls into Los Angeles zone due to >= -125 check
+    it('should guess Denver timezone from Mountain coords', () => {
       const result = guessTimezoneFromCoords(39.7392, -104.9903); // Denver coords
 
-      // Should return a valid US timezone
-      expect(result).toMatch(/America\/(Denver|Los_Angeles)/);
+      expect(result).toBe('America/Denver');
+    });
+
+    it('should guess Chicago timezone for wide Central-time landmass', () => {
+      // The Central time zone spans much further west than a naive even split of
+      // the continent would suggest — these are all genuinely Central time despite
+      // longitudes well past -100.
+      expect(guessTimezoneFromCoords(39.0997, -94.5786)).toBe('America/Chicago'); // Kansas City, MO
+      expect(guessTimezoneFromCoords(41.2565, -95.9345)).toBe('America/Chicago'); // Omaha, NE
+      expect(guessTimezoneFromCoords(35.4676, -97.5164)).toBe('America/Chicago'); // Oklahoma City, OK
+      expect(guessTimezoneFromCoords(32.7767, -96.7970)).toBe('America/Chicago'); // Dallas, TX
+    });
+
+    it('should guess Denver timezone for other Mountain-time cities', () => {
+      expect(guessTimezoneFromCoords(40.7608, -111.8910)).toBe('America/Denver'); // Salt Lake City, UT
+    });
+
+    it('should guess Los Angeles timezone for other Pacific-time cities', () => {
+      expect(guessTimezoneFromCoords(47.6062, -122.3321)).toBe('America/Los_Angeles'); // Seattle, WA
+    });
+
+    it('should guess New York timezone for other Eastern-time cities', () => {
+      expect(guessTimezoneFromCoords(33.7490, -84.3880)).toBe('America/New_York'); // Atlanta, GA
     });
 
     it('should guess Los Angeles timezone from West Coast coords', () => {
@@ -220,13 +238,14 @@ describe('Timezone Utilities', () => {
 
     it('should handle coordinates at timezone boundaries', () => {
       // The function uses simple longitude ranges:
-      // >= -75: New York, >= -87: Chicago, >= -104: Denver, >= -125: LA
-      const eastern = guessTimezoneFromCoords(40.0, -74.0); // East of -75
-      const central = guessTimezoneFromCoords(40.0, -86.0); // Between -75 and -87
+      // >= -85: New York, >= -101: Chicago, >= -115: Denver, >= -125: LA
+      const eastern = guessTimezoneFromCoords(40.0, -74.0); // East of -85
+      const central = guessTimezoneFromCoords(40.0, -95.0); // Between -85 and -101
+      const mountain = guessTimezoneFromCoords(40.0, -110.0); // Between -101 and -115
 
       expect(eastern).toBe('America/New_York');
-      // -86 is >= -87, so returns Chicago
       expect(central).toBe('America/Chicago');
+      expect(mountain).toBe('America/Denver');
     });
 
     it('should return UTC as ultimate fallback', () => {
@@ -276,6 +295,41 @@ describe('Timezone Utilities', () => {
 
       expect(typeof result).toBe('string');
       expect(result).toContain('-'); // Should still have separator
+    });
+  });
+
+  describe('local times without a UTC offset (Open-Meteo timezone=auto)', () => {
+    // Pretend the server runs far from the location, so reading a local time
+    // in the server's zone (the old bug) would shift it by hours or a day
+    let originalZone: typeof Settings.defaultZone;
+    beforeEach(() => {
+      originalZone = Settings.defaultZone;
+      Settings.defaultZone = 'Pacific/Kiritimati'; // UTC+14
+    });
+    afterEach(() => {
+      Settings.defaultZone = originalZone;
+    });
+
+    it('keeps a date-only string on the same calendar day', () => {
+      expect(formatDateInTimezone('2026-09-28', 'America/Anchorage')).toBe('Sep 28, 2026');
+    });
+
+    it('keeps a local datetime at the same wall-clock time', () => {
+      const formatted = formatInTimezone('2026-09-28T14:00', 'America/Anchorage', 'short');
+      expect(formatted).toContain('9/28/2026');
+      expect(formatted).toContain('2:00');
+    });
+
+    it('still converts strings that carry an offset', () => {
+      // 14:00 UTC is 06:00 in Anchorage (AKDT, UTC-8)
+      expect(formatInTimezone('2026-09-28T14:00:00+00:00', 'America/Anchorage', 'short')).toContain('6:00');
+    });
+
+    it('formats offset-less ranges in the location timezone', () => {
+      const range = formatTimeRangeInTimezone('2026-09-28T09:00', '2026-09-28T17:00', 'America/Anchorage');
+      expect(range).toContain('Sep 28, 2026');
+      expect(range).toContain('9:00');
+      expect(range).toContain('5:00');
     });
   });
 

@@ -102,3 +102,43 @@ export function resolveLocation(
     'Use save_location to save frequently used locations.'
   );
 }
+
+/**
+ * Replace a saved `location_name` in tool arguments with its coordinates.
+ *
+ * Lets tools whose handlers only understand latitude/longitude accept saved
+ * locations without each handler resolving them itself. Arguments with
+ * coordinates and no location_name are returned unchanged, so the handler's
+ * own coordinate validation still applies.
+ *
+ * @param args - Raw tool arguments
+ * @param locationStore - Location store instance
+ * @returns Arguments with latitude/longitude filled in from the saved location
+ * @throws Error if location_name is provided but no saved location matches,
+ *   or if neither location_name nor coordinates are provided
+ */
+export function applySavedLocation(args: unknown, locationStore: LocationStore): unknown {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    // Throws the "Either location_name OR (latitude + longitude)" guidance
+    return resolveLocation({}, locationStore);
+  }
+
+  const { location_name: locationName, ...rest } = args as Record<string, unknown>;
+  if (locationName === undefined || locationName === null) {
+    if (rest.latitude === undefined && rest.longitude === undefined) {
+      resolveLocation({}, locationStore);
+    }
+    return args;
+  }
+  if (typeof locationName !== 'string') {
+    throw new Error('location_name must be a string');
+  }
+  if (locationName.trim().length === 0) {
+    throw new Error('location_name cannot be empty');
+  }
+
+  // location_name takes precedence over any coordinates also supplied,
+  // matching resolveLocation's behavior for the tools that call it directly
+  const resolved = resolveLocation({ location_name: locationName }, locationStore);
+  return { ...rest, latitude: resolved.latitude, longitude: resolved.longitude };
+}

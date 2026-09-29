@@ -1,0 +1,1863 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather Console</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #f0f2f5;
+    --border: #dfe3e8;
+    --text: #1b1f24;
+    --muted: #5d6673;
+    --accent: #1f6feb;
+    --accent-text: #ffffff;
+    --accent-soft: #e6effd;
+    --ok: #1a7f37;
+    --ok-soft: #e3f4e8;
+    --err: #c62828;
+    --err-soft: #fdecec;
+    --code-bg: #f3f4f6;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216;
+      --panel: #171b21;
+      --panel-2: #1e232b;
+      --border: #2b323c;
+      --text: #e6e9ee;
+      --muted: #97a1ae;
+      --accent: #4c8dff;
+      --accent-text: #0b1220;
+      --accent-soft: #1a2940;
+      --ok: #4ec46a;
+      --ok-soft: #16301f;
+      --err: #ff6b6b;
+      --err-soft: #3a1c1c;
+      --code-bg: #1f252e;
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .status {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    padding: 3px 10px; border-radius: 999px; background: var(--panel-2);
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ok .dot { background: var(--ok); }
+  .status.err { color: var(--err); background: var(--err-soft); }
+  .status.err .dot { background: var(--err); }
+
+  /* ---------- layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 20px;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    nav { position: static !important; max-height: none !important; }
+  }
+
+  /* ---------- sidebar ---------- */
+  nav {
+    position: sticky; top: 72px;
+    align-self: start;
+    max-height: calc(100vh - 92px);
+    overflow-y: auto;
+  }
+  nav input[type=search] {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--panel);
+    margin-bottom: 10px;
+  }
+  .group-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted);
+    margin: 14px 8px 4px;
+  }
+  .tool-btn {
+    display: block; width: 100%; text-align: left;
+    border: 0; background: none; cursor: pointer;
+    padding: 6px 10px; border-radius: 7px;
+    color: var(--text);
+  }
+  .tool-btn:hover { background: var(--panel-2); }
+  .tool-btn[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tool-btn .tool-id { display: block; font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+  }
+  .card + .card { margin-top: 16px; }
+  .tool-head h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+  .tool-head code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .tool-desc { color: var(--muted); margin: 8px 0 0; }
+  .tool-desc details summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+
+  /* ---------- location helper ---------- */
+  .loc {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--panel-2);
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    gap: 8px;
+    align-items: end;
+  }
+  @media (max-width: 640px) { .loc { grid-template-columns: minmax(0, 1fr); } }
+  .loc label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .search-row { display: flex; gap: 6px; position: relative; }
+  .search-row input { flex: 1; min-width: 0; }
+  .results {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 4;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.14);
+    max-height: 260px; overflow-y: auto;
+  }
+  .results button {
+    display: block; width: 100%; text-align: left; border: 0; background: none;
+    padding: 8px 10px; cursor: pointer;
+  }
+  .results button:hover, .results button:focus { background: var(--accent-soft); outline: none; }
+  .results small { color: var(--muted); display: block; }
+  .results .empty { padding: 8px 10px; color: var(--muted); }
+
+  /* ---------- form ---------- */
+  form.fields {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px 16px;
+  }
+  .field.wide { grid-column: 1 / -1; }
+  .field label.name { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .field .req { color: var(--err); margin-left: 2px; }
+  .field .help { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  input[type=text], input[type=number], input[type=date], input[type=search], select, textarea {
+    width: 100%;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--panel);
+  }
+  input:focus, select:focus, textarea:focus, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  textarea { font-family: var(--mono); font-size: 12px; min-height: 70px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px;
+    cursor: pointer; user-select: none; font-size: 13px;
+  }
+  .chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .chip input { margin: 0; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; padding-top: 4px; }
+  .switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+
+  .actions {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-top: 4px;
+  }
+  .btn {
+    border: 1px solid var(--border); background: var(--panel);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--panel-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.07); }
+  .btn:disabled { opacity: .6; cursor: progress; }
+  .btn.small { padding: 4px 10px; font-size: 12px; }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid currentColor; border-right-color: transparent;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
+
+  /* ---------- result ---------- */
+  .result-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-bottom: 12px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .result-head .title { font-weight: 600; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); }
+  .badge.err { background: var(--err-soft); color: var(--err); }
+  .result-head .spacer { flex: 1; }
+  .placeholder { color: var(--muted); text-align: center; padding: 30px 10px; }
+
+  .md { overflow-wrap: anywhere; }
+  .md h1 { font-size: 20px; margin: 16px 0 8px; }
+  .md h2 { font-size: 17px; margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .md h2:first-child, .md h1 + h2 { border-top: 0; padding-top: 0; }
+  .md h3 { font-size: 15px; margin: 14px 0 4px; }
+  .md h4, .md h5, .md h6 { font-size: 14px; margin: 12px 0 4px; }
+  .md p { margin: 6px 0; }
+  .md ul, .md ol { margin: 6px 0; padding-left: 22px; }
+  .md li { margin: 2px 0; }
+  .md hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+  .md code { font-family: var(--mono); font-size: 12.5px; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .md pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow-x: auto; }
+  .md pre code { background: none; padding: 0; }
+  .md blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--accent); color: var(--muted); }
+  .md a { color: var(--accent); }
+  .md img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; margin: 8px 0; }
+  .md .table-wrap { overflow-x: auto; margin: 8px 0; }
+  .md table { border-collapse: collapse; font-size: 13px; }
+  .md th, .md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+  .md th { background: var(--panel-2); }
+  pre.raw {
+    white-space: pre-wrap; font-family: var(--mono); font-size: 12px;
+    background: var(--code-bg); padding: 12px; border-radius: 8px; margin: 12px 0 0;
+    overflow-wrap: anywhere;
+  }
+  /* ---------- radar map ---------- */
+  .radar-map {
+    position: relative; overflow: hidden;
+    height: 400px; margin: 8px 0;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2);
+    touch-action: none; cursor: grab;
+  }
+  .radar-map.dragging { cursor: grabbing; }
+  .radar-map .tiles { position: absolute; inset: 0; }
+  .md .radar-map img, .radar-map img {
+    position: absolute; width: 256px; height: 256px;
+    max-width: none; margin: 0; border: 0; border-radius: 0;
+    user-select: none; -webkit-user-drag: none; pointer-events: none;
+  }
+  /* Esri's gray canvas is very faint; boost it so state lines and coasts read */
+  .radar-map img.base { filter: contrast(1.6); }
+  .radar-map img.radar { opacity: .75; }
+  .radar-map img.roads { opacity: .7; }
+  .radar-map .pin {
+    position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px;
+    border-radius: 50%; background: #e5484d; border: 3px solid #fff;
+    box-shadow: 0 0 0 2px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.4);
+    z-index: 2; pointer-events: none;
+  }
+  .radar-map .zoom {
+    position: absolute; top: 10px; right: 10px; z-index: 3;
+    display: flex; flex-direction: column;
+    border-radius: 7px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  }
+  .radar-map .zoom button {
+    width: 32px; height: 32px; border: 0; cursor: pointer;
+    background: var(--panel); color: var(--text); font-size: 18px; line-height: 1;
+  }
+  .radar-map .zoom button + button { border-top: 1px solid var(--border); }
+  .radar-map .zoom button:disabled { opacity: .4; cursor: default; }
+  .radar-map .map-label, .radar-map .attribution {
+    position: absolute; z-index: 3;
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    color: var(--text); font-size: 11px; padding: 2px 7px; border-radius: 5px;
+  }
+  .radar-map .map-label { top: 10px; left: 10px; font-weight: 600; }
+  .radar-map .attribution { bottom: 6px; right: 6px; color: var(--muted); }
+  .radar-map .attribution a { color: inherit; }
+  /* ---------- climate explorer ---------- */
+  :root {
+    --hi: #cf3b30; --lo: #3656c9; --bar: #7d858f; --precip: #2f86d6; --freeze: #9aa3ad; --sel: #1f6feb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --hi: #ff7b72; --lo: #7ea6ff; --bar: #9aa3ad; --precip: #58a6ff; --freeze: #5d6673; --sel: #4c8dff; }
+  }
+  .cx-form { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 16px; align-items: end; }
+  .cx-form .field label.name { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .cx-place { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .cx-place strong { color: var(--text); font-size: 15px; }
+  .cx-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 10px; }
+  .cx-toolbar .grow { flex: 1; }
+  .cx-year { display: inline-flex; align-items: center; gap: 4px; }
+  .cx-year select { width: auto; font-weight: 650; font-size: 15px; padding: 4px 8px; }
+  .cx-arrow { width: 32px; height: 32px; padding: 0; justify-content: center; font-size: 18px; line-height: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+  .seg button { border: 0; background: var(--panel); padding: 4px 9px; cursor: pointer; font-size: 12.5px; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button:hover { background: var(--panel-2); }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .cx-chart { position: relative; outline: none; user-select: none; touch-action: pan-y; }
+  .cx-chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+  .cx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .cx-chart text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+  .cx-chart .grid { stroke: var(--border); stroke-width: 1; }
+  .cx-chart .freeze { stroke: var(--freeze); stroke-width: 1; stroke-dasharray: 4 3; }
+  .cx-chart .band-hi { fill: var(--hi); }
+  .cx-chart .band-lo { fill: var(--lo); }
+  .cx-chart .band.outer { fill-opacity: .12; }
+  .cx-chart .band.inner { fill-opacity: .17; }
+  .cx-chart .mean { fill: none; stroke-width: 1.5; stroke-opacity: .55; }
+  .cx-chart .mean.hi { stroke: var(--hi); }
+  .cx-chart .mean.lo { stroke: var(--lo); }
+  .cx-chart .record { fill: none; stroke-width: 1; stroke-dasharray: 2 3; stroke-opacity: .7; }
+  .cx-chart .record.hi { stroke: var(--hi); }
+  .cx-chart .record.lo { stroke: var(--lo); }
+  .cx-chart .day { fill: var(--bar); fill-opacity: .55; }
+  .cx-chart .tick-hi { stroke: var(--hi); stroke-width: 2; }
+  .cx-chart .tick-lo { stroke: var(--lo); stroke-width: 2; }
+  .cx-chart .set-hi { fill: var(--panel); stroke: var(--hi); stroke-width: 1.5; }
+  .cx-chart .set-lo { fill: var(--panel); stroke: var(--lo); stroke-width: 1.5; }
+  .cx-chart .precip { fill: var(--precip); fill-opacity: .8; }
+  .cx-chart .axis-title { font-weight: 600; }
+  .cx-chart .cross { stroke: var(--text); stroke-opacity: .45; stroke-width: 1; }
+  .cx-chart .cross-day { fill: var(--text); fill-opacity: .07; }
+  .cx-chart .level { stroke: var(--text); stroke-opacity: .5; stroke-width: 1; stroke-dasharray: 4 3; }
+  .cx-chart .level-tag rect { fill: var(--text); }
+  .cx-chart .level-tag text { fill: var(--panel); font-weight: 650; }
+  .cx-chart .brush { fill: var(--sel); fill-opacity: .12; stroke: var(--sel); stroke-opacity: .6; }
+  .cx-chart .hit { fill: transparent; cursor: crosshair; }
+  .cx-tip {
+    position: absolute; z-index: 3; pointer-events: none;
+    min-width: 220px; max-width: 290px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: 9px 11px; font-size: 12.5px; line-height: 1.45;
+  }
+  .cx-tip .d { font-weight: 650; margin-bottom: 4px; }
+  .cx-tip .row { display: flex; gap: 8px; align-items: baseline; }
+  .cx-tip .row b { min-width: 34px; }
+  .cx-tip .hi b { color: var(--hi); }
+  .cx-tip .lo b { color: var(--lo); }
+  .cx-tip .m { color: var(--muted); font-size: 11.5px; }
+  .cx-tip .flag { color: var(--accent); font-weight: 600; }
+  .cx-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .cx-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .cx-legend span[hidden] { display: none; }
+  .cx-legend i { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+  .cx-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; margin-top: 14px; }
+  .cx-stat { background: var(--panel-2); border-radius: 8px; padding: 9px 11px; }
+  .cx-stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  .cx-stat .v { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+  .cx-stat .s { font-size: 12px; color: var(--muted); }
+  .cx-stat .v.hi { color: var(--hi); }
+  .cx-stat .v.lo { color: var(--lo); }
+  .error-box { background: var(--err-soft); color: var(--err); padding: 10px 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Weather Console</h1>
+  <span class="sub">Run the Weather MCP tools directly, no LLM needed</span>
+  <span class="status" id="status"><span class="dot"></span><span id="status-text">Connecting…</span></span>
+</header>
+
+<div class="layout">
+  <nav aria-label="Tools">
+    <input type="search" id="tool-filter" placeholder="Filter tools…" aria-label="Filter tools">
+    <div id="tool-list"></div>
+  </nav>
+
+  <main>
+    <section class="card" id="tool-card">
+      <div class="placeholder">Loading tools…</div>
+    </section>
+    <section class="card" id="result-card" hidden>
+      <div class="result-head">
+        <span class="title" id="result-title"></span>
+        <span class="badge" id="result-badge"></span>
+        <span class="hint" id="result-meta"></span>
+        <span class="spacer"></span>
+        <button class="btn small" type="button" id="toggle-raw">Show markdown</button>
+        <button class="btn small" type="button" id="copy-result">Copy</button>
+      </div>
+      <div id="result-body"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------------
+  // Presentation metadata (purely cosmetic; unknown tools still work)
+  // ---------------------------------------------------------------------
+  const GROUPS = [
+    ['Forecasts', ['get_forecast', 'get_forecast_nomads', 'get_model_comparison_forecast', 'get_historical_weather']],
+    ['Now & alerts', ['get_current_conditions', 'get_alerts', 'get_weather_imagery', 'get_lightning_activity']],
+    ['Environment & hazards', ['get_air_quality', 'get_marine_conditions', 'get_river_conditions', 'get_wildfire_info']],
+    ['Locations', ['search_location', 'save_location', 'list_saved_locations', 'get_saved_location', 'remove_saved_location']],
+    ['System', ['check_service_status']],
+  ];
+  const TITLES = {
+    get_forecast: 'Forecast',
+    get_forecast_nomads: 'NOMADS GFS forecast',
+    get_model_comparison_forecast: 'Model comparison',
+    get_historical_weather: 'Historical weather',
+    get_current_conditions: 'Current conditions',
+    get_alerts: 'Weather alerts',
+    get_weather_imagery: 'Radar imagery',
+    get_lightning_activity: 'Lightning activity',
+    get_air_quality: 'Air quality',
+    get_marine_conditions: 'Marine conditions',
+    get_river_conditions: 'River conditions',
+    get_wildfire_info: 'Wildfires',
+    search_location: 'Search location',
+    save_location: 'Save location',
+    list_saved_locations: 'Saved locations',
+    get_saved_location: 'Saved location details',
+    remove_saved_location: 'Remove saved location',
+    check_service_status: 'Service status',
+  };
+  const SLOW_TOOLS = new Set(['get_forecast_nomads', 'get_model_comparison_forecast']);
+  const LOCATION_STORE_TOOLS = new Set(['save_location', 'remove_saved_location']);
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const el = (tag, attrs = {}, ...children) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value === undefined || value === null || value === false) continue;
+      if (key === 'class') node.className = value;
+      else if (key === 'text') node.textContent = value;
+      else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+      else node.setAttribute(key, value === true ? '' : String(value));
+    }
+    for (const child of children.flat()) {
+      if (child === null || child === undefined || child === false) continue;
+      node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    }
+    return node;
+  };
+
+  const store = {
+    get(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ } },
+  };
+
+  const humanize = (key) => key.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const titleFor = (tool) => TITLES[tool.name] || humanize(tool.name.replace(/^get_/, ''));
+
+  // ---------------------------------------------------------------------
+  // API
+  // ---------------------------------------------------------------------
+  async function api(path, options = {}) {
+    const response = await fetch(path, options);
+    let body;
+    try { body = await response.json(); } catch { body = {}; }
+    if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+    return body;
+  }
+
+  // ---------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------
+  let tools = [];
+  let current = null;
+  let currentView = null; // 'climate' when a non-tool view is showing
+  let savedLocations = [];
+  let lastMarkdown = '';
+  let lastArgs = {};
+  let showRaw = false;
+
+  // ---------------------------------------------------------------------
+  // Sidebar
+  // ---------------------------------------------------------------------
+  function renderToolList(filter = '') {
+    const list = $('#tool-list');
+    list.replaceChildren();
+    const needle = filter.trim().toLowerCase();
+    const byName = new Map(tools.map((t) => [t.name, t]));
+    const placed = new Set();
+    const groups = GROUPS.map(([label, names]) => {
+      const members = names.filter((n) => byName.has(n)).map((n) => byName.get(n));
+      members.forEach((t) => placed.add(t.name));
+      return [label, members];
+    });
+    const others = tools.filter((t) => !placed.has(t.name));
+    if (others.length) groups.push(['Other', others]);
+
+    if (!needle || 'climate explorer history normals'.includes(needle)) {
+      list.append(el('div', { class: 'group-label', text: 'Explorers' }));
+      list.append(el('button', {
+        class: 'tool-btn', type: 'button',
+        'aria-current': currentView === 'climate' ? 'true' : 'false',
+        onclick: () => showClimateExplorer(),
+      }, 'Climate explorer', el('span', { class: 'tool-id', text: 'highs & lows since 1940' })));
+    }
+
+    for (const [label, members] of groups) {
+      const visible = members.filter((t) => !needle ||
+        t.name.includes(needle) || titleFor(t).toLowerCase().includes(needle));
+      if (!visible.length) continue;
+      list.append(el('div', { class: 'group-label', text: label }));
+      for (const tool of visible) {
+        list.append(el('button', {
+          class: 'tool-btn', type: 'button',
+          'aria-current': current && current.name === tool.name ? 'true' : 'false',
+          onclick: () => selectTool(tool.name),
+        }, titleFor(tool), el('span', { class: 'tool-id', text: tool.name })));
+      }
+    }
+    if (!list.children.length) list.append(el('div', { class: 'hint', text: 'No tools match.' }));
+  }
+
+  // ---------------------------------------------------------------------
+  // Tool form
+  // ---------------------------------------------------------------------
+  function splitDescription(text) {
+    const match = (text || '').match(/^(.+?[.!?])(\s|$)/s);
+    if (!match || match[1].length >= text.length - 2) return [text || '', ''];
+    return [match[1], text.slice(match[1].length).trim()];
+  }
+
+  function fieldKind(key, schema) {
+    const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+    if (type === 'array') return schema.items && Array.isArray(schema.items.enum) ? 'multi' : 'list';
+    if (type === 'boolean') return 'boolean';
+    if (type === 'number' || type === 'integer') return 'number';
+    if (type === 'string' && Array.isArray(schema.enum)) return 'enum';
+    if (type === 'string' && (schema.format === 'date' || /(^|_)date$/.test(key))) return 'date';
+    if (type === 'string') return 'text';
+    return 'json';
+  }
+
+  function buildField(key, schema, required, saved) {
+    const kind = fieldKind(key, schema);
+    const id = `f-${key}`;
+    const hasDefault = schema.default !== undefined;
+    // Required fields that have a default start filled in, so "Run" works as-is
+    const savedValue = saved && saved[key] !== undefined ? saved[key]
+      : (required && hasDefault ? schema.default : undefined);
+    let control;
+
+    switch (kind) {
+      case 'number':
+        control = el('input', {
+          id, name: key, type: 'number', step: 'any',
+          min: schema.minimum, max: schema.maximum,
+          placeholder: hasDefault ? `Default: ${schema.default}` : '',
+        });
+        if (savedValue !== undefined) control.value = savedValue;
+        break;
+      case 'enum':
+        control = el('select', { id, name: key },
+          el('option', { value: '', text: hasDefault ? `Default (${schema.default})` : '—' }),
+          schema.enum.map((v) => el('option', { value: v, text: v })));
+        if (savedValue !== undefined) control.value = savedValue;
+        break;
+      case 'date':
+        control = el('input', { id, name: key, type: 'date' });
+        if (savedValue !== undefined) control.value = savedValue;
+        break;
+      case 'boolean': {
+        const box = el('input', { id, name: key, type: 'checkbox' });
+        box.checked = savedValue !== undefined ? savedValue === true : schema.default === true;
+        control = el('label', { class: 'switch' }, box, el('span', { text: hasDefault ? `Default: ${schema.default ? 'on' : 'off'}` : 'Enable' }));
+        break;
+      }
+      case 'multi':
+        control = el('div', { class: 'chips', id, role: 'group' },
+          schema.items.enum.map((v) => {
+            const box = el('input', { type: 'checkbox', name: key, value: v });
+            box.checked = Array.isArray(savedValue) && savedValue.includes(v);
+            return el('label', { class: 'chip' }, box, v);
+          }));
+        break;
+      case 'list':
+        control = el('input', { id, name: key, type: 'text', placeholder: 'Comma-separated values' });
+        if (Array.isArray(savedValue)) control.value = savedValue.join(', ');
+        break;
+      case 'json':
+        control = el('textarea', { id, name: key, placeholder: 'JSON value' });
+        if (savedValue !== undefined) control.value = JSON.stringify(savedValue, null, 2);
+        break;
+      default: {
+        control = el('input', { id, name: key, type: 'text', autocomplete: 'off' });
+        if (key === 'alias' || key === 'location_name') control.setAttribute('list', 'saved-aliases');
+        if (savedValue !== undefined) control.value = savedValue;
+      }
+    }
+
+    const wide = kind === 'multi' || kind === 'json' || (schema.description || '').length > 140;
+    return el('div', { class: `field${wide ? ' wide' : ''}`, 'data-key': key, 'data-kind': kind },
+      el('label', { class: 'name', for: kind === 'multi' ? null : id }, humanize(key), required ? el('span', { class: 'req', text: '*', title: 'Required' }) : null),
+      control,
+      schema.description ? el('div', { class: 'help', text: schema.description }) : null);
+  }
+
+  function readForm(form) {
+    const props = current.inputSchema.properties || {};
+    const args = {};
+    for (const field of form.querySelectorAll('.field')) {
+      const key = field.dataset.key;
+      const schema = props[key] || {};
+      switch (field.dataset.kind) {
+        case 'number': {
+          const raw = field.querySelector('input').value.trim();
+          if (raw !== '') args[key] = Number(raw);
+          break;
+        }
+        case 'boolean': {
+          const checked = field.querySelector('input').checked;
+          if (checked !== (schema.default === true)) args[key] = checked;
+          break;
+        }
+        case 'multi': {
+          const values = [...field.querySelectorAll('input:checked')].map((i) => i.value);
+          if (values.length) args[key] = values;
+          break;
+        }
+        case 'list': {
+          const values = field.querySelector('input').value.split(',').map((s) => s.trim()).filter(Boolean);
+          if (values.length) args[key] = values;
+          break;
+        }
+        case 'json': {
+          const raw = field.querySelector('textarea').value.trim();
+          if (raw) {
+            try { args[key] = JSON.parse(raw); }
+            catch { throw new Error(`"${humanize(key)}" must be valid JSON`); }
+          }
+          break;
+        }
+        default: {
+          const raw = field.querySelector('input, select').value.trim();
+          if (raw !== '') args[key] = raw;
+        }
+      }
+    }
+    for (const key of current.inputSchema.required || []) {
+      if (args[key] === undefined) throw new Error(`"${humanize(key)}" is required`);
+    }
+    return args;
+  }
+
+  function setFieldValue(key, value) {
+    const input = document.querySelector(`#tool-card .field[data-key="${key}"] input`);
+    if (input) input.value = value;
+  }
+
+  function buildLocationHelper(props, onPick) {
+    const supportsName = 'location_name' in props;
+    const savedSelect = el('select', { 'aria-label': 'Saved location' },
+      el('option', { value: '', text: savedLocations.length ? 'Choose…' : 'None saved yet' }),
+      savedLocations.map((loc) => el('option', { value: loc.alias, text: `${loc.alias} — ${loc.name}` })));
+    savedSelect.disabled = !savedLocations.length;
+    savedSelect.addEventListener('change', () => {
+      const loc = savedLocations.find((l) => l.alias === savedSelect.value);
+      if (!loc) return;
+      if (onPick) onPick({ label: loc.name && loc.name !== loc.alias ? `${loc.alias} — ${loc.name}` : loc.alias, latitude: loc.latitude, longitude: loc.longitude });
+      if (supportsName) {
+        setFieldValue('location_name', loc.alias);
+        setFieldValue('latitude', '');
+        setFieldValue('longitude', '');
+      } else {
+        setFieldValue('latitude', loc.latitude);
+        setFieldValue('longitude', loc.longitude);
+      }
+    });
+
+    const query = el('input', { type: 'text', placeholder: 'City, town, or place', 'aria-label': 'Search for a place' });
+    const results = el('div', { class: 'results', hidden: true });
+    const searchBtn = el('button', { class: 'btn', type: 'button', text: 'Search' });
+    const doSearch = async () => {
+      const q = query.value.trim();
+      if (q.length < 2) return;
+      searchBtn.disabled = true;
+      results.hidden = false;
+      results.replaceChildren(el('div', { class: 'empty', text: 'Searching…' }));
+      try {
+        const { results: found } = await api(`/api/geocode?q=${encodeURIComponent(q)}`);
+        results.replaceChildren();
+        if (!found.length) results.append(el('div', { class: 'empty', text: 'No matches found.' }));
+        for (const r of found) {
+          const where = [r.admin1, r.country].filter(Boolean).join(', ');
+          results.append(el('button', {
+            type: 'button',
+            onclick: () => {
+              setFieldValue('latitude', r.latitude.toFixed(4));
+              setFieldValue('longitude', r.longitude.toFixed(4));
+              if (supportsName) setFieldValue('location_name', '');
+              savedSelect.value = '';
+              query.value = r.name + (where ? `, ${where}` : '');
+              results.hidden = true;
+              if (onPick) onPick({ label: query.value, latitude: r.latitude, longitude: r.longitude });
+            },
+          }, r.name, el('small', { text: `${where}${where ? ' · ' : ''}${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}` })));
+        }
+      } catch (error) {
+        results.replaceChildren(el('div', { class: 'empty', text: error.message }));
+      } finally {
+        searchBtn.disabled = false;
+      }
+    };
+    searchBtn.addEventListener('click', doSearch);
+    query.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+      if (e.key === 'Escape') results.hidden = true;
+    });
+    document.addEventListener('click', (e) => {
+      if (!results.contains(e.target) && e.target !== searchBtn) results.hidden = true;
+    });
+
+    const geoBtn = el('button', { class: 'btn', type: 'button', text: 'Use my location' });
+    geoBtn.hidden = !('geolocation' in navigator);
+    geoBtn.addEventListener('click', () => {
+      geoBtn.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => {
+        setFieldValue('latitude', pos.coords.latitude.toFixed(4));
+        setFieldValue('longitude', pos.coords.longitude.toFixed(4));
+        if (supportsName) setFieldValue('location_name', '');
+        savedSelect.value = '';
+        geoBtn.disabled = false;
+        if (onPick) onPick({ label: 'My location', latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      }, (err) => {
+        geoBtn.disabled = false;
+        alert(`Couldn't get your location: ${err.message}`);
+      }, { timeout: 10000 });
+    });
+
+    return el('div', { class: 'loc' },
+      el('div', {}, el('label', { text: 'Saved location' }), savedSelect),
+      el('div', {}, el('label', { text: 'Find a place' }), el('div', { class: 'search-row' }, query, searchBtn, results)),
+      el('div', {}, geoBtn));
+  }
+
+  function selectTool(name) {
+    const switching = !current || current.name !== name;
+    current = tools.find((t) => t.name === name);
+    if (!current) return;
+    currentView = null;
+    if (switching) {
+      // A previous tool's output under a different form is confusing
+      $('#result-card').hidden = true;
+      window.scrollTo({ top: 0 });
+    }
+    store.set('weather-console:last-tool', name);
+    try { history.replaceState(null, '', `#${name}`); } catch { /* ignore */ }
+    renderToolList($('#tool-filter').value);
+
+    const props = (current.inputSchema && current.inputSchema.properties) || {};
+    const required = new Set((current.inputSchema && current.inputSchema.required) || []);
+    const saved = store.get(`weather-console:args:${name}`);
+    const [lead, rest] = splitDescription(current.description);
+
+    const runBtn = el('button', { class: 'btn primary', type: 'submit' }, el('span', { text: 'Run' }));
+    const form = el('form', { class: 'fields', novalidate: true },
+      Object.entries(props).map(([key, schema]) => buildField(key, schema, required.has(key), saved)),
+      el('div', { class: 'actions' },
+        runBtn,
+        el('button', {
+          class: 'btn', type: 'button', text: 'Clear',
+          onclick: () => { store.set(`weather-console:args:${name}`, null); selectTool(name); },
+        }),
+        SLOW_TOOLS.has(name) ? el('span', { class: 'hint', text: 'Model-run data downloads can take up to a minute.' }) : null,
+        !Object.keys(props).length ? el('span', { class: 'hint', text: 'This tool takes no parameters.' }) : null));
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      let args;
+      try {
+        args = readForm(form);
+      } catch (error) {
+        showError(titleFor(current), error.message);
+        return;
+      }
+      store.set(`weather-console:args:${name}`, args);
+      runBtn.disabled = true;
+      runBtn.replaceChildren(el('span', { class: 'spinner' }), el('span', { text: 'Running…' }));
+      try {
+        await runTool(current, args);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.replaceChildren(el('span', { text: 'Run' }));
+      }
+    });
+
+    const card = $('#tool-card');
+    card.replaceChildren(
+      el('div', { class: 'tool-head' }, el('h2', { text: titleFor(current) }), el('code', { text: current.name })),
+      el('div', { class: 'tool-desc' },
+        lead,
+        rest ? el('details', {}, el('summary', { text: 'More' }), el('p', { text: rest })) : null),
+      'latitude' in props && 'longitude' in props ? buildLocationHelper(props) : null,
+      form);
+  }
+
+  // ---------------------------------------------------------------------
+  // Running tools and showing results
+  // ---------------------------------------------------------------------
+  async function runTool(tool, args) {
+    const card = $('#result-card');
+    card.hidden = false;
+    $('#result-title').textContent = titleFor(tool);
+    $('#result-badge').textContent = 'Running';
+    $('#result-badge').className = 'badge';
+    $('#result-meta').textContent = '';
+    $('#result-body').replaceChildren(el('div', { class: 'placeholder' }, 'Waiting for the MCP server…'));
+
+    try {
+      const result = await api('/api/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: tool.name, arguments: args }),
+      });
+      const text = (result.content || [])
+        .map((part) => part.type === 'text' ? part.text : `*(${part.type} content not shown)*`)
+        .join('\n\n');
+      lastMarkdown = text;
+      lastArgs = args;
+      $('#result-badge').textContent = result.isError ? 'Error' : 'OK';
+      $('#result-badge').className = result.isError ? 'badge err' : 'badge';
+      $('#result-meta').textContent = `${(result.elapsedMs / 1000).toFixed(1)}s`;
+      renderResult();
+      if (LOCATION_STORE_TOOLS.has(tool.name) && !result.isError) await refreshSavedLocations();
+    } catch (error) {
+      showError(titleFor(tool), error.message);
+    }
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function showError(title, message) {
+    $('#result-card').hidden = false;
+    $('#result-title').textContent = title;
+    $('#result-badge').textContent = 'Error';
+    $('#result-badge').className = 'badge err';
+    $('#result-meta').textContent = '';
+    lastMarkdown = message;
+    $('#result-body').replaceChildren(el('div', { class: 'error-box', text: message }));
+  }
+
+  function renderResult() {
+    const body = $('#result-body');
+    $('#toggle-raw').textContent = showRaw ? 'Show formatted' : 'Show markdown';
+    if (showRaw) {
+      body.replaceChildren(el('pre', { class: 'raw', text: lastMarkdown }));
+    } else {
+      const div = el('div', { class: 'md' });
+      div.innerHTML = renderMarkdown(lastMarkdown);
+      enhanceRadarImages(div, lastArgs);
+      body.replaceChildren(div);
+    }
+  }
+
+  $('#toggle-raw').addEventListener('click', () => { showRaw = !showRaw; renderResult(); });
+  $('#copy-result').addEventListener('click', async () => {
+    const btn = $('#copy-result');
+    try {
+      await navigator.clipboard.writeText(lastMarkdown);
+      btn.textContent = 'Copied';
+    } catch {
+      btn.textContent = 'Copy failed';
+    }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+
+  // ---------------------------------------------------------------------
+  // Radar map: RainViewer tiles are bare precipitation overlays with no
+  // geography, so draw them over a basemap with a pin at the location
+  // ---------------------------------------------------------------------
+  const RAINVIEWER_TILE = /^(https:\/\/tilecache\.rainviewer\.com\/v2\/radar\/[^/]+)\/\d+\/(\d+)\/\d+\/\d+\/(.+)$/;
+  const TILE_PX = 256;
+  const MIN_ZOOM = 3;
+  const MAX_ZOOM = 7; // RainViewer's free tiles return "Zoom Level Not Supported" above 7
+  const MAX_LAT = 85.05112878;
+
+  function worldPixel(lat, lon, zoom) {
+    const scale = TILE_PX * 2 ** zoom;
+    const clamped = Math.max(-MAX_LAT, Math.min(MAX_LAT, lat)) * Math.PI / 180;
+    return {
+      x: (lon + 180) / 360 * scale,
+      y: (1 - Math.log(Math.tan(clamped) + 1 / Math.cos(clamped)) / Math.PI) / 2 * scale,
+    };
+  }
+
+  function tileImg(src, left, top, cls) {
+    const img = el('img', { src, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', class: cls, draggable: 'false' });
+    img.style.left = `${left}px`;
+    img.style.top = `${top}px`;
+    img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+    return img;
+  }
+
+  function buildRadarMap({ radarBase, radarSuffix, zoom, lat, lon, label }) {
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Esri's gray canvas basemaps are built for overlays and need no API key.
+    // Base (land, water, borders) goes under the radar; highways and labels go
+    // on top so they stay readable through heavy precipitation.
+    const canvas = `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${dark ? 'Dark' : 'Light'}_Gray`;
+    const tiles = el('div', { class: 'tiles' });
+    const pin = el('div', { class: 'pin', title: `${lat.toFixed(4)}, ${lon.toFixed(4)}` });
+    const zoomIn = el('button', { type: 'button', 'aria-label': 'Zoom in', text: '+' });
+    const zoomOut = el('button', { type: 'button', 'aria-label': 'Zoom out', text: '−' });
+    const map = el('div', { class: 'radar-map', role: 'img', 'aria-label': `Radar map centered on ${lat.toFixed(3)}, ${lon.toFixed(3)}` },
+      tiles, pin,
+      el('div', { class: 'zoom' }, zoomIn, zoomOut),
+      label ? el('div', { class: 'map-label', text: label }) : null,
+      el('div', { class: 'attribution' },
+        'Basemap © ', el('a', { href: 'https://www.esri.com', target: '_blank', rel: 'noopener noreferrer', text: 'Esri' }),
+        ', HERE, Garmin, © ', el('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener noreferrer', text: 'OpenStreetMap' }),
+        ' · Radar ', el('a', { href: 'https://www.rainviewer.com', target: '_blank', rel: 'noopener noreferrer', text: 'RainViewer' })));
+
+    let z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+    let center = worldPixel(lat, lon, z);
+
+    function draw() {
+      const width = map.clientWidth || 640;
+      const height = map.clientHeight || 400;
+      const left = center.x - width / 2;
+      const top = center.y - height / 2;
+      const count = 2 ** z;
+      const nodes = [];
+      for (let ty = Math.floor(top / TILE_PX); ty <= Math.floor((top + height) / TILE_PX); ty++) {
+        if (ty < 0 || ty >= count) continue;
+        for (let tx = Math.floor(left / TILE_PX); tx <= Math.floor((left + width) / TILE_PX); tx++) {
+          const wx = ((tx % count) + count) % count; // wrap around the antimeridian
+          const px = tx * TILE_PX - left;
+          const py = ty * TILE_PX - top;
+          nodes.push(
+            tileImg(`${canvas}_Base/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'base'),
+            tileImg(`${radarBase}/512/${z}/${wx}/${ty}/${radarSuffix}`, px, py, 'radar'),
+            tileImg(`https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'roads'),
+            tileImg(`${canvas}_Reference/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'labels'));
+        }
+      }
+      tiles.replaceChildren(...nodes);
+      const here = worldPixel(lat, lon, z);
+      pin.style.left = `${here.x - left}px`;
+      pin.style.top = `${here.y - top}px`;
+      zoomIn.disabled = z >= MAX_ZOOM;
+      zoomOut.disabled = z <= MIN_ZOOM;
+    }
+
+    function setZoom(next) {
+      if (next < MIN_ZOOM || next > MAX_ZOOM) return;
+      const factor = 2 ** (next - z);
+      center = { x: center.x * factor, y: center.y * factor };
+      z = next;
+      draw();
+    }
+    zoomIn.addEventListener('click', () => setZoom(z + 1));
+    zoomOut.addEventListener('click', () => setZoom(z - 1));
+
+    // Drag to pan
+    let drag = null;
+    map.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button, a')) return;
+      drag = { x: e.clientX, y: e.clientY, center: { ...center } };
+      map.setPointerCapture(e.pointerId);
+      map.classList.add('dragging');
+    });
+    map.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      center = { x: drag.center.x - (e.clientX - drag.x), y: drag.center.y - (e.clientY - drag.y) };
+      draw();
+    });
+    const endDrag = () => { drag = null; map.classList.remove('dragging'); };
+    map.addEventListener('pointerup', endDrag);
+    map.addEventListener('pointercancel', endDrag);
+    map.addEventListener('dblclick', () => { center = worldPixel(lat, lon, z); draw(); });
+
+    if ('ResizeObserver' in window) new ResizeObserver(() => draw()).observe(map);
+    requestAnimationFrame(draw);
+    return map;
+  }
+
+  function enhanceRadarImages(container, args) {
+    for (const img of container.querySelectorAll('img')) {
+      const match = img.getAttribute('src').match(RAINVIEWER_TILE);
+      if (!match) continue;
+      const [, radarBase, zoom, radarSuffix] = match;
+      let lat = Number(args.latitude);
+      let lon = Number(args.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        // Fall back to the coordinates printed in the tool output
+        const printed = lastMarkdown.match(/\*\*Location:\*\*\s*(-?[\d.]+),\s*(-?[\d.]+)/);
+        if (!printed) continue;
+        lat = Number(printed[1]);
+        lon = Number(printed[2]);
+      }
+      img.replaceWith(buildRadarMap({ radarBase, radarSuffix, zoom: Number(zoom), lat, lon, label: img.alt }));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Minimal, escape-first markdown renderer (tool output is markdown)
+  // ---------------------------------------------------------------------
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function safeUrl(url) {
+    const decoded = url.replace(/&amp;/g, '&');
+    return /^https?:\/\//i.test(decoded) ? url : null;
+  }
+
+  function inline(text) {
+    // Protect inline code first so its contents are not formatted
+    const codes = [];
+    let s = escapeHtml(text).replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, url) => {
+      const safe = safeUrl(url);
+      return safe ? `<img src="${safe}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer">` : m;
+    });
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+      const safe = safeUrl(url);
+      return safe ? `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>` : m;
+    });
+    s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, pre, url) =>
+      `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, '$1<em>$2</em>');
+    s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[Number(i)]}</code>`);
+    return s;
+  }
+
+  function renderMarkdown(md) {
+    const lines = md.replace(/\r\n?/g, '\n').split('\n');
+    const out = [];
+    let para = [];
+    let list = null; // { type: 'ul' | 'ol', items: [] }
+
+    const flushPara = () => { if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; } };
+    const flushList = () => {
+      if (list) { out.push(`<${list.type}>${list.items.map((i) => `<li>${inline(i)}</li>`).join('')}</${list.type}>`); list = null; }
+    };
+    const flush = () => { flushPara(); flushList(); };
+    const cells = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('```')) {
+        flush();
+        const code = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) { code.push(lines[i]); i++; }
+        out.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+        continue;
+      }
+      if (!trimmed) { flush(); continue; }
+
+      const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
+      if (heading) { flush(); out.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`); continue; }
+
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) { flush(); out.push('<hr>'); continue; }
+
+      if (trimmed.startsWith('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+        flush();
+        const head = cells(trimmed);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(cells(lines[i])); i++; }
+        i--;
+        out.push('<div class="table-wrap"><table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') +
+          '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
+          '</tbody></table></div>');
+        continue;
+      }
+
+      const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+      const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (bullet || numbered) {
+        flushPara();
+        const type = bullet ? 'ul' : 'ol';
+        if (!list || list.type !== type) { flushList(); list = { type, items: [] }; }
+        list.items.push((bullet || numbered)[1]);
+        continue;
+      }
+
+      if (trimmed.startsWith('>')) { flush(); out.push(`<blockquote>${inline(trimmed.replace(/^>\s?/, ''))}</blockquote>`); continue; }
+
+      flushList();
+      para.push(trimmed);
+    }
+    flush();
+    return out.join('\n');
+  }
+
+  // ---------------------------------------------------------------------
+  // Climate explorer: WeatherSpark-style daily highs and lows for any year
+  // since 1940, drawn over percentile bands for the calendar day
+  // ---------------------------------------------------------------------
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const MONTH_STARTS = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]; // leap-year calendar
+  const DAY_MS = 86400000;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  // Indexes into the 21 quantiles (0, 5, ... 100th percentile) sent by the server
+  const Q10 = 2, Q25 = 5, Q75 = 15, Q90 = 18;
+
+  const cx = {
+    data: null,       // /api/climate payload
+    iso: [],          // ISO date per index (through Dec 31 of the last year)
+    dataLen: 0,       // days that have data; later indexes are padding
+    slot: [],         // leap-calendar day (0-365) per index
+    place: null,      // { label, latitude, longitude }
+    unit: store.get('weather-console:climate:unit') === 'C' ? 'C' : 'F',
+    showRecords: store.get('weather-console:climate:records') === true,
+    showPrecip: store.get('weather-console:climate:precip') !== false,
+    mode: { year: null, month: null }, // month: 0-11 or null for the whole year
+    range: null,      // [start, end) indexes when zoomed to a custom range
+    hover: null,
+    pointerY: null,   // pointer height in SVG units while the mouse is over the chart
+    ui: null,         // controls of the rendered card, for in-place updates
+    loading: false,
+    requestId: 0,
+  };
+
+  const ordinal = (n) => {
+    const v = Math.round(n);
+    const s = ['th', 'st', 'nd', 'rd'];
+    const m = v % 100;
+    return v + (s[(m - 20) % 10] || s[m] || s[0]);
+  };
+  const toUnit = (f) => (cx.unit === 'F' ? f : (f - 32) * 5 / 9);
+  const fmtT = (f) => (f === null || f === undefined ? '—' : `${Math.round(toUnit(f))}°${cx.unit}`);
+  const fmtDelta = (df) => {
+    const v = cx.unit === 'F' ? df : df * 5 / 9;
+    return `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}°${cx.unit}`;
+  };
+  const fmtP = (inches, digits = 2) => (inches === null || inches === undefined ? '—'
+    : cx.unit === 'F' ? `${inches.toFixed(digits)} in` : `${(inches * 25.4).toFixed(digits === 2 ? 1 : 0)} mm`);
+  const isoToUtc = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+  const fmtDate = (iso, opts = { month: 'short', day: 'numeric', year: 'numeric' }) =>
+    new Date(isoToUtc(iso)).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
+
+  function percentileRank(value, q) {
+    const last = q.length - 1;
+    if (value <= q[0]) return 0;
+    if (value >= q[last]) return 100;
+    for (let i = 1; i <= last; i++) {
+      if (value <= q[i]) {
+        const span = q[i] - q[i - 1];
+        return ((i - 1 + (span > 0 ? (value - q[i - 1]) / span : 0.5)) / last) * 100;
+      }
+    }
+    return 100;
+  }
+
+  function rankText(rank) {
+    if (rank >= 100) return 'above every baseline year';
+    if (rank <= 0) return 'below every baseline year';
+    return `${ordinal(Math.min(99, Math.max(1, rank)))} percentile`;
+  }
+
+  // ----- data -----
+  function indexData(data) {
+    const start = isoToUtc(data.start);
+    // Pad the last year out to Dec 31 so its view shows the normals for the rest of the year
+    cx.dataLen = data.high.length;
+    const total = Math.round((Date.UTC(Number(data.end.slice(0, 4)), 11, 31) - start) / DAY_MS) + 1;
+    for (const key of ['high', 'low', 'precipitation']) {
+      while (data[key].length < total) data[key].push(null);
+    }
+    cx.iso = new Array(total);
+    cx.slot = new Array(total);
+    for (let i = 0; i < total; i++) {
+      const d = new Date(start + i * DAY_MS);
+      cx.iso[i] = d.toISOString().slice(0, 10);
+      cx.slot[i] = MONTH_STARTS[d.getUTCMonth()] + d.getUTCDate() - 1;
+    }
+  }
+  const indexOf = (iso) => Math.round((isoToUtc(iso) - isoToUtc(cx.data.start)) / DAY_MS);
+  const firstYear = () => Number(cx.data.start.slice(0, 4));
+  const lastYear = () => Number(cx.data.end.slice(0, 4));
+
+  function viewRange() {
+    const n = cx.iso.length;
+    if (cx.range) return cx.range;
+    const { year, month } = cx.mode;
+    const pad = (v) => String(v).padStart(2, '0');
+    let a, b;
+    if (month === null) {
+      a = indexOf(`${year}-01-01`);
+      b = indexOf(`${year + 1}-01-01`);
+    } else {
+      a = indexOf(`${year}-${pad(month + 1)}-01`);
+      b = month === 11 ? indexOf(`${year + 1}-01-01`) : indexOf(`${year}-${pad(month + 2)}-01`);
+    }
+    return [Math.max(0, a), Math.min(n, b)];
+  }
+
+  async function loadClimate() {
+    const lat = Number($('#cx-lat').value);
+    const lon = Number($('#cx-lon').value);
+    const baseline = $('#cx-baseline').value;
+    const status = $('#cx-status');
+    if (!$('#cx-lat').value.trim() || !$('#cx-lon').value.trim() || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      status.replaceChildren(el('div', { class: 'error-box', text: 'Pick a place, or enter a latitude and longitude.' }));
+      return;
+    }
+    store.set('weather-console:climate:args', { latitude: lat, longitude: lon, baseline, place: cx.place });
+    const id = ++cx.requestId;
+    const btn = $('#cx-load');
+    btn.disabled = true;
+    btn.replaceChildren(el('span', { class: 'spinner' }), el('span', { text: 'Loading…' }));
+    status.replaceChildren(el('div', { class: 'placeholder' }, 'Downloading every day since 1940 and computing percentiles…'));
+    try {
+      const data = await api(`/api/climate?latitude=${lat}&longitude=${lon}&baseline=${encodeURIComponent(baseline)}`);
+      if (id !== cx.requestId) return; // a newer request superseded this one
+      const keepView = cx.data !== null;
+      cx.data = data;
+      indexData(data);
+      if (!keepView || cx.mode.year === null) cx.mode = { year: lastYear(), month: null };
+      cx.mode.year = Math.min(Math.max(cx.mode.year, firstYear()), lastYear());
+      cx.range = null;
+      cx.hover = null;
+      status.replaceChildren();
+      renderClimate();
+    } catch (error) {
+      if (id !== cx.requestId) return;
+      status.replaceChildren(el('div', { class: 'error-box', text: error.message }));
+    } finally {
+      if (id === cx.requestId) {
+        btn.disabled = false;
+        btn.replaceChildren(el('span', { text: 'Load' }));
+      }
+    }
+  }
+
+  // ----- view -----
+  function showClimateExplorer() {
+    current = null;
+    currentView = 'climate';
+    $('#result-card').hidden = true;
+    store.set('weather-console:last-tool', 'climate');
+    try { history.replaceState(null, '', '#climate'); } catch { /* ignore */ }
+    renderToolList($('#tool-filter').value);
+    window.scrollTo({ top: 0 });
+
+    const saved = store.get('weather-console:climate:args') || {};
+    if (saved.place) cx.place = saved.place;
+    const lastFull = new Date(Date.now() - 2 * DAY_MS).getUTCFullYear() - 1;
+    const baselines = [
+      ['1991-2020', '1991–2020 (current normals)'],
+      ['1961-1990', '1961–1990'],
+      ['1951-1980', '1951–1980'],
+      [`1940-${lastFull}`, `1940–${lastFull} (all years)`],
+    ];
+    const baselineSelect = el('select', { id: 'cx-baseline' }, baselines.map(([v, t]) => el('option', { value: v, text: t })));
+    if (saved.baseline && baselines.some(([v]) => v === saved.baseline)) baselineSelect.value = saved.baseline;
+    baselineSelect.addEventListener('change', () => { if (cx.data) loadClimate(); });
+
+    const numField = (key, label, value) => {
+      const input = el('input', { id: `cx-${key.slice(0, 3)}`, name: key, type: 'number', step: 'any' });
+      if (value !== undefined) input.value = value;
+      input.addEventListener('input', () => { cx.place = null; });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadClimate(); });
+      return el('div', { class: 'field', 'data-key': key, 'data-kind': 'number' },
+        el('label', { class: 'name', for: input.id, text: label }), input);
+    };
+
+    const helper = buildLocationHelper({ latitude: {}, longitude: {} }, (pick) => {
+      cx.place = pick;
+      // Let the helper fill the coordinate fields first
+      setTimeout(loadClimate, 0);
+    });
+
+    $('#tool-card').replaceChildren(
+      el('div', { class: 'tool-head' }, el('h2', { text: 'Climate explorer' }), el('code', { text: 'Open-Meteo ERA5 archive · 1940–present' })),
+      el('div', { class: 'tool-desc' },
+        'Daily highs and lows for any year, over the normal range for each calendar day. ',
+        el('details', {}, el('summary', { text: 'How to read it' }), el('p', { text:
+          'Gray bars span each day\'s low to high (blue and red ticks). The shaded bands show where highs (red) and lows (blue) usually fall on that date: ' +
+          'the darker band is the middle 50% (25th–75th percentile) and the lighter band the middle 80% (10th–90th) of the baseline years, ' +
+          'pooling ±7 days around each date. Faint lines are the averages; dotted lines are the record high and low for each date since 1940. ' +
+          'Drag across the chart to zoom, double-click to zoom back out, and use the arrow keys to step through days. ' +
+          'Values are ERA5 reanalysis (a ~25 km grid average), so they can differ by a few degrees from an airport station.' }))),
+      helper,
+      el('div', { class: 'cx-form' },
+        numField('latitude', 'Latitude', saved.latitude),
+        numField('longitude', 'Longitude', saved.longitude),
+        el('div', { class: 'field' }, el('label', { class: 'name', for: 'cx-baseline', text: 'Normals baseline' }), baselineSelect),
+        el('div', { class: 'field' }, el('button', { class: 'btn primary', type: 'button', id: 'cx-load', onclick: loadClimate }, el('span', { text: 'Load' })))),
+      el('div', { id: 'cx-status' }),
+      el('div', { id: 'cx-body' }));
+
+    if (cx.data) renderClimate();
+    else if (saved.latitude !== undefined && saved.longitude !== undefined) loadClimate();
+  }
+
+  // Build the card once per data load; view changes go through updateClimate()
+  function renderClimate() {
+    const body = $('#cx-body');
+    if (!body || !cx.data) return;
+    const { location: loc, climatology: clim } = cx.data;
+    const coord = `${Math.abs(loc.latitude).toFixed(2)}°${loc.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(loc.longitude).toFixed(2)}°${loc.longitude >= 0 ? 'E' : 'W'}`;
+
+    const yearSelect = el('select', { 'aria-label': 'Year' });
+    for (let y = lastYear(); y >= firstYear(); y--) yearSelect.append(el('option', { value: y, text: y }));
+    yearSelect.addEventListener('change', () => { cx.mode.year = Number(yearSelect.value); cx.range = null; updateClimate(); });
+
+    const prev = el('button', { class: 'btn cx-arrow', type: 'button', 'aria-label': 'Previous', text: '‹', onclick: () => stepView(-1) });
+    const next = el('button', { class: 'btn cx-arrow', type: 'button', 'aria-label': 'Next', text: '›', onclick: () => stepView(1) });
+
+    const yearBtn = el('button', { type: 'button', text: 'Year',
+      onclick: () => { cx.mode.month = null; cx.range = null; updateClimate(); } });
+    const monthBtns = MONTHS.map((m, i) => el('button', { type: 'button', text: m,
+      onclick: () => { cx.mode.month = i; cx.range = null; updateClimate(); } }));
+    const monthSeg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Month' }, yearBtn, monthBtns);
+
+    const unitBtns = ['F', 'C'].map((u) => el('button', { type: 'button', text: `°${u}`, 'data-unit': u,
+      onclick: () => { cx.unit = u; store.set('weather-console:climate:unit', u); updateClimate(); } }));
+    const unitSeg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Units' }, unitBtns);
+
+    const toggle = (label, key, storeKey) => {
+      const box = el('input', { type: 'checkbox' });
+      box.checked = cx[key];
+      box.addEventListener('change', () => { cx[key] = box.checked; store.set(storeKey, box.checked); updateClimate(); });
+      return el('label', { class: 'switch' }, box, el('span', { text: label }));
+    };
+
+    const lastN = el('button', { class: 'btn small', type: 'button', text: 'Last 12 months', onclick: () => {
+      const n = cx.dataLen;
+      cx.range = [Math.max(0, n - 365), n];
+      cx.mode = { year: lastYear(), month: null };
+      updateClimate();
+    } });
+
+    const chart = el('div', { class: 'cx-chart', tabindex: '0', role: 'img' });
+    const tip = el('div', { class: 'cx-tip', hidden: true });
+    chart.append(tip);
+
+    const recordLegend = [
+      el('span', {}, el('i', { style: 'border-top:1.5px dotted var(--hi);height:0' }), 'Record for the date'),
+      el('span', {}, el('i', { style: 'border:1.5px solid var(--hi);border-radius:50%;width:9px;height:9px' }), 'Record set that day'),
+    ];
+
+    body.replaceChildren(
+      el('section', { class: 'card', style: 'margin-top:16px' },
+        el('div', { class: 'cx-place' },
+          el('strong', { text: cx.place && cx.place.label ? cx.place.label : coord }), ' · ',
+          cx.place && cx.place.label ? `${coord} · ` : '',
+          `${Math.round(loc.elevation)} m · ${loc.timezone} · data ${fmtDate(cx.data.start)} – ${fmtDate(cx.data.end)} · normals ${clim.baseline.startYear}–${clim.baseline.endYear}`),
+        el('div', { class: 'cx-toolbar' },
+          el('span', { class: 'cx-year' }, prev, yearSelect, next),
+          monthSeg, lastN,
+          el('span', { class: 'grow' }),
+          toggle('Records', 'showRecords', 'weather-console:climate:records'),
+          toggle('Precipitation', 'showPrecip', 'weather-console:climate:precip'),
+          unitSeg),
+        chart,
+        el('div', { class: 'cx-legend' },
+          el('span', {}, el('i', { style: 'background:var(--bar);opacity:.6;width:4px;height:14px' }), 'Daily range'),
+          el('span', {}, el('i', { style: 'background:var(--hi);height:3px' }), 'High'),
+          el('span', {}, el('i', { style: 'background:var(--lo);height:3px' }), 'Low'),
+          el('span', {}, el('i', { style: 'background:color-mix(in srgb, var(--hi) 30%, transparent)' }), '25th–75th pct'),
+          el('span', {}, el('i', { style: 'background:color-mix(in srgb, var(--hi) 13%, transparent)' }), '10th–90th pct'),
+          recordLegend),
+        el('div', { class: 'cx-stats', id: 'cx-stats' })));
+
+    cx.ui = { yearSelect, prev, next, yearBtn, monthBtns, unitBtns, recordLegend, chart, tip };
+    if ('ResizeObserver' in window) {
+      let lastWidth = chart.clientWidth;
+      new ResizeObserver(() => {
+        if (chart.isConnected && chart.clientWidth !== lastWidth) { lastWidth = chart.clientWidth; drawChart(chart, tip); }
+      }).observe(chart);
+    }
+    updateClimate();
+  }
+
+  // Redraw the chart and summary for the current view and sync the controls, leaving the rest of the page alone
+  function updateClimate() {
+    const ui = cx.ui;
+    if (!ui || !ui.chart.isConnected) { renderClimate(); return; }
+    const [a, b] = viewRange();
+    const zoomed = cx.range !== null;
+
+    ui.yearSelect.value = String(cx.mode.year);
+    ui.prev.disabled = a <= 0;
+    ui.next.disabled = b >= cx.dataLen;
+    ui.yearBtn.setAttribute('aria-pressed', String(cx.mode.month === null && !zoomed));
+    ui.monthBtns.forEach((btn, i) => btn.setAttribute('aria-pressed', String(cx.mode.month === i && !zoomed)));
+    ui.unitBtns.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.unit === cx.unit)));
+    ui.recordLegend.forEach((item) => { item.hidden = !cx.showRecords; });
+
+    const rangeLabel = zoomed
+      ? `${fmtDate(cx.iso[a])} – ${fmtDate(cx.iso[b - 1])}`
+      : cx.mode.month === null ? String(cx.mode.year) : `${MONTHS[cx.mode.month]} ${cx.mode.year}`;
+    ui.chart.setAttribute('aria-label', `Daily high and low temperatures, ${rangeLabel}`);
+    drawChart(ui.chart, ui.tip);
+    renderStats([a, b], rangeLabel);
+  }
+
+  function stepView(dir) {
+    if (cx.range) {
+      const [a, b] = cx.range;
+      const span = b - a;
+      const n = cx.dataLen;
+      const na = Math.max(0, Math.min(n - span, a + dir * span));
+      cx.range = [na, na + span];
+      cx.mode.year = Number(cx.iso[na].slice(0, 4));
+    } else if (cx.mode.month === null) {
+      cx.mode.year += dir;
+    } else {
+      let m = cx.mode.month + dir;
+      let y = cx.mode.year;
+      if (m < 0) { m = 11; y--; }
+      if (m > 11) { m = 0; y++; }
+      cx.mode = { year: y, month: m };
+    }
+    cx.mode.year = Math.min(Math.max(cx.mode.year, firstYear()), lastYear());
+    cx.hover = null;
+    updateClimate();
+  }
+
+  // ----- chart -----
+  function niceStep(span) {
+    const steps = cx.unit === 'F' ? [5, 10, 20] : [2, 5, 10];
+    return steps.find((s) => span / s <= 9) || steps[steps.length - 1];
+  }
+
+  function drawChart(chart, tip) {
+    const d = cx.data;
+    const clim = d.climatology;
+    const [a, b] = viewRange();
+    const days = b - a;
+    const W = Math.max(240, chart.clientWidth || 800);
+    const ml = 44, mr = 12, mt = 10;
+    const mainH = W < 600 ? 280 : 380;
+    const axisH = 24;
+    const precipH = cx.showPrecip ? 64 : 0;
+    const gap = cx.showPrecip ? 14 : 0;
+    const H = mt + mainH + axisH + gap + precipH + (cx.showPrecip ? 4 : 0);
+    const plotW = W - ml - mr;
+    const dayW = plotW / days;
+    const xc = (i) => ml + (i - a + 0.5) * dayW; // day center
+    const xl = (i) => ml + (i - a) * dayW;       // day left edge
+
+    // Y domain in display units
+    let lo = Infinity, hi = -Infinity;
+    const take = (v) => { if (v !== null && v !== undefined) { const u = toUnit(v); if (u < lo) lo = u; if (u > hi) hi = u; } };
+    for (let i = a; i < b; i++) {
+      const s = cx.slot[i];
+      take(d.high[i]); take(d.low[i]);
+      const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+      if (qh) take(qh[Q90]);
+      if (ql) take(ql[Q10]);
+      if (cx.showRecords) {
+        if (clim.recordHigh[s]) take(clim.recordHigh[s].value);
+        if (clim.recordLow[s]) take(clim.recordLow[s].value);
+      }
+    }
+    if (!Number.isFinite(lo)) { lo = toUnit(0); hi = toUnit(100); }
+    const step = niceStep(hi - lo);
+    lo = Math.floor(lo / step) * step;
+    hi = Math.ceil(hi / step) * step;
+    if (hi === lo) hi = lo + step;
+    const y = (f) => mt + (1 - (toUnit(f) - lo) / (hi - lo)) * mainH;
+    const yu = (u) => mt + (1 - (u - lo) / (hi - lo)) * mainH;
+
+    const parts = [];
+    const f1 = (n) => n.toFixed(1);
+
+    // Grid + y labels
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const yy = f1(yu(v));
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${yy}" y2="${yy}"/>`);
+      parts.push(`<text x="${ml - 6}" y="${yy}" dy="0.32em" text-anchor="end">${v}°</text>`);
+    }
+    const freezing = cx.unit === 'F' ? 32 : 0;
+    if (freezing > lo && freezing < hi) {
+      parts.push(`<line class="freeze" x1="${ml}" x2="${W - mr}" y1="${f1(yu(freezing))}" y2="${f1(yu(freezing))}"/>`);
+    }
+
+    // X axis: month boundaries for long views, day ticks for short ones
+    const axisY = mt + mainH;
+    const crossesYear = cx.iso[a].slice(0, 4) !== cx.iso[b - 1].slice(0, 4);
+    if (days > 62) {
+      for (let i = a; i < b; i++) {
+        const iso = cx.iso[i];
+        if (i !== a && iso.slice(8) !== '01') continue;
+        let j = i + 1;
+        while (j < b && cx.iso[j].slice(8) !== '01') j++;
+        const m = Number(iso.slice(5, 7)) - 1;
+        if (i !== a) parts.push(`<line class="grid" x1="${f1(xl(i))}" x2="${f1(xl(i))}" y1="${mt}" y2="${axisY + 4}"/>`);
+        if ((j - i) * dayW > 22) {
+          const label = crossesYear && m === 0 ? `${MONTHS[m]} ${iso.slice(0, 4)}` : MONTHS[m];
+          parts.push(`<text x="${f1((xl(i) + xl(j)) / 2)}" y="${axisY + 16}" text-anchor="middle">${label}</text>`);
+        }
+      }
+    } else {
+      const every = Math.max(1, Math.ceil(days / (plotW / 46)));
+      for (let i = a; i < b; i++) {
+        const dom = Number(cx.iso[i].slice(8));
+        if ((i - a) % every !== 0) continue;
+        const m = Number(cx.iso[i].slice(5, 7)) - 1;
+        const label = i === a || dom <= every ? `${MONTHS[m]} ${dom}` : String(dom);
+        parts.push(`<line class="grid" x1="${f1(xc(i))}" x2="${f1(xc(i))}" y1="${axisY}" y2="${axisY + 4}"/>`);
+        parts.push(`<text x="${f1(xc(i))}" y="${axisY + 16}" text-anchor="middle">${label}</text>`);
+      }
+    }
+
+    // Bands and mean lines (extend to the view edges)
+    const band = (qs, lowIdx, highIdx, cls) => {
+      const top = [], bot = [];
+      for (let i = a; i < b; i++) {
+        const q = qs[cx.slot[i]];
+        if (!q) continue;
+        const xs = i === a ? [xl(i), xc(i)] : i === b - 1 ? [xc(i), xl(i + 1)] : [xc(i)];
+        for (const x of xs) { top.push(`${f1(x)},${f1(y(q[highIdx]))}`); bot.push(`${f1(x)},${f1(y(q[lowIdx]))}`); }
+      }
+      if (top.length) parts.push(`<path class="${cls}" d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`);
+    };
+    const line = (values, cls, getter = (v) => v) => {
+      const pts = [];
+      for (let i = a; i < b; i++) {
+        const v = values[cx.slot[i]];
+        if (v === null || v === undefined) continue;
+        const xs = i === a ? [xl(i), xc(i)] : i === b - 1 ? [xc(i), xl(i + 1)] : [xc(i)];
+        for (const x of xs) pts.push(`${f1(x)},${f1(y(getter(v)))}`);
+      }
+      if (pts.length) parts.push(`<path class="${cls}" d="M${pts.join('L')}"/>`);
+    };
+    band(clim.low.quantiles, Q10, Q90, 'band band-lo outer');
+    band(clim.high.quantiles, Q10, Q90, 'band band-hi outer');
+    band(clim.low.quantiles, Q25, Q75, 'band band-lo inner');
+    band(clim.high.quantiles, Q25, Q75, 'band band-hi inner');
+    line(clim.low.mean, 'mean lo');
+    line(clim.high.mean, 'mean hi');
+    if (cx.showRecords) {
+      line(clim.recordHigh, 'record hi', (r) => r.value);
+      line(clim.recordLow, 'record lo', (r) => r.value);
+    }
+
+    // Days
+    const barW = Math.max(1, Math.min(dayW * 0.5, 8));
+    const tickW = Math.max(2, Math.min(dayW * 0.85, 12));
+    const markR = Math.max(2.5, Math.min(dayW * 0.35, 4.5));
+    for (let i = a; i < b; i++) {
+      const h = d.high[i], l = d.low[i];
+      if (h === null || l === null) continue;
+      const x = xc(i);
+      const yh = y(h), yl = y(l);
+      parts.push(`<rect class="day" x="${f1(x - barW / 2)}" y="${f1(yh)}" width="${f1(barW)}" height="${f1(Math.max(1, yl - yh))}"/>`);
+      parts.push(`<line class="tick-hi" x1="${f1(x - tickW / 2)}" x2="${f1(x + tickW / 2)}" y1="${f1(yh)}" y2="${f1(yh)}"/>`);
+      parts.push(`<line class="tick-lo" x1="${f1(x - tickW / 2)}" x2="${f1(x + tickW / 2)}" y1="${f1(yl)}" y2="${f1(yl)}"/>`);
+    }
+    if (cx.showRecords) {
+      for (let i = a; i < b; i++) {
+        const s = cx.slot[i];
+        const year = Number(cx.iso[i].slice(0, 4));
+        const rh = clim.recordHigh[s], rl = clim.recordLow[s];
+        if (rh && rh.year === year && d.high[i] !== null) parts.push(`<circle class="set-hi" cx="${f1(xc(i))}" cy="${f1(y(d.high[i]))}" r="${markR}"/>`);
+        if (rl && rl.year === year && d.low[i] !== null) parts.push(`<circle class="set-lo" cx="${f1(xc(i))}" cy="${f1(y(d.low[i]))}" r="${markR}"/>`);
+      }
+    }
+
+    // Precipitation strip
+    const pTop = axisY + axisH + gap;
+    if (cx.showPrecip) {
+      let pMax = 0;
+      for (let i = a; i < b; i++) if (d.precipitation[i] > pMax) pMax = d.precipitation[i];
+      pMax = Math.max(pMax, 0.5);
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${pTop + precipH}" y2="${pTop + precipH}"/>`);
+      parts.push(`<text class="axis-title" x="${ml - 6}" y="${pTop + 8}" text-anchor="end">${cx.unit === 'F' ? 'in' : 'mm'}</text>`);
+      parts.push(`<text x="${ml - 6}" y="${pTop + 22}" text-anchor="end">${cx.unit === 'F' ? pMax.toFixed(1) : Math.round(pMax * 25.4)}</text>`);
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${pTop + 22}" y2="${pTop + 22}" stroke-dasharray="2 3"/>`);
+      const scale = (precipH - 22) / pMax;
+      const pw = Math.max(1, Math.min(dayW * 0.7, 10));
+      for (let i = a; i < b; i++) {
+        const p = d.precipitation[i];
+        if (!p || p < 0.005) continue;
+        const hgt = Math.max(1, p * scale);
+        parts.push(`<rect class="precip" x="${f1(xc(i) - pw / 2)}" y="${f1(pTop + precipH - hgt)}" width="${f1(pw)}" height="${f1(hgt)}"/>`);
+      }
+    }
+
+    // Interaction layers
+    parts.push(`<g id="cx-hover"></g><g id="cx-level"></g><rect class="brush" id="cx-brush" x="0" y="${mt}" width="0" height="${mainH}" visibility="hidden"/>`);
+    parts.push(`<rect class="hit" x="0" y="${mt}" width="${f1(ml + plotW)}" height="${H - mt}"/>`);
+
+    let svg = chart.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS(SVG_NS, 'svg');
+      chart.prepend(svg);
+      wireChart(chart, svg, tip);
+    }
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = parts.join('');
+    svg._geom = { a, b, ml, mr, mt, mainH, H, dayW, xc, xl, y, plotW, W, lo, hi };
+    if (cx.hover !== null && cx.hover >= a && cx.hover < b) showHover(chart, svg, tip, cx.hover);
+    else tip.hidden = true;
+  }
+
+  function showHover(chart, svg, tip, i) {
+    const g = svg._geom;
+    const hover = svg.querySelector('#cx-hover');
+    if (i === null || i < g.a || i >= g.b) { hover.innerHTML = ''; tip.hidden = true; return; }
+    cx.hover = i;
+    const x = g.xc(i);
+    hover.innerHTML = `<rect class="cross-day" x="${(g.xl(i)).toFixed(1)}" y="${g.mt}" width="${Math.max(1, g.dayW).toFixed(1)}" height="${g.H - g.mt}"/>` +
+      `<line class="cross" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${g.mt}" y2="${g.H}"/>`;
+
+    const d = cx.data, clim = d.climatology, s = cx.slot[i];
+    const year = Number(cx.iso[i].slice(0, 4));
+    const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+    const rh = clim.recordHigh[s], rl = clim.recordLow[s];
+    const row = (cls, label, value, q, mean) => el('div', {},
+      el('div', { class: `row ${cls}` }, el('b', { text: label }), el('span', { text: fmtT(value) }),
+        value !== null && q ? el('span', { class: 'm', text: rankText(percentileRank(value, q)) }) : null),
+      q ? el('div', { class: 'm', text: `normal ${fmtT(q[Q25])}–${fmtT(q[Q75])}, avg ${fmtT(mean)}` } ) : null);
+    const flags = [];
+    if (rh && rh.year === year && d.high[i] !== null) flags.push('Record high for the date');
+    if (rl && rl.year === year && d.low[i] !== null) flags.push('Record low for the date');
+    tip.replaceChildren(...[
+      el('div', { class: 'd', text: fmtDate(cx.iso[i], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) }),
+      row('hi', 'High', d.high[i], qh, clim.high.mean[s]),
+      row('lo', 'Low', d.low[i], ql, clim.low.mean[s]),
+      el('div', { class: 'row', style: 'margin-top:3px' }, el('b', { text: 'Precip' }), el('span', { text: fmtP(d.precipitation[i]) })),
+      rh || rl ? el('div', { class: 'm', style: 'margin-top:3px' },
+        `Records: ${rh ? `${fmtT(rh.value)} (${rh.year})` : '—'} / ${rl ? `${fmtT(rl.value)} (${rl.year})` : '—'}`) : null,
+      flags.length ? el('div', { class: 'flag', text: flags.join(' · ') }) : null,
+    ].filter(Boolean));
+    tip.hidden = false;
+
+    // Place the tooltip beside the crosshair, flipping near the right edge
+    const scale = chart.clientWidth / g.W;
+    const px = x * scale;
+    const tw = tip.offsetWidth;
+    tip.style.left = `${px + 14 + tw > chart.clientWidth ? Math.max(0, px - 14 - tw) : px + 14}px`;
+    // Sit just below the pointer's level line, or above it when there's no room below.
+    // Without a pointer (keyboard), sit below the day's high.
+    const anchor = (cx.pointerY ?? (d.high[i] !== null ? g.y(d.high[i]) : g.mt)) * scale;
+    const th = tip.offsetHeight;
+    const below = anchor + 16;
+    const top = below + th <= chart.clientHeight ? below : anchor - 16 - th;
+    tip.style.top = `${Math.max(0, Math.min(top, chart.clientHeight - th))}px`;
+  }
+
+  // Horizontal guide at the pointer's height, labeled on the temperature axis
+  function showLevel(svg, svgY) {
+    const g = svg._geom;
+    const group = svg.querySelector('#cx-level');
+    if (svgY === null || svgY < g.mt || svgY > g.mt + g.mainH) { group.innerHTML = ''; return; }
+    const value = g.lo + (1 - (svgY - g.mt) / g.mainH) * (g.hi - g.lo);
+    const yy = svgY.toFixed(1);
+    group.innerHTML = `<line class="level" x1="${g.ml}" x2="${g.W - g.mr}" y1="${yy}" y2="${yy}"/>` +
+      `<g class="level-tag"><rect x="1" y="${(svgY - 9).toFixed(1)}" width="${g.ml - 4}" height="18" rx="4"/>` +
+      `<text x="${g.ml - 7}" y="${yy}" dy="0.34em" text-anchor="end">${Math.round(value)}°${cx.unit}</text></g>`;
+  }
+
+  function wireChart(chart, svg, tip) {
+    const toSvg = (e) => {
+      const g = svg._geom;
+      const rect = svg.getBoundingClientRect();
+      const k = g.W / rect.width;
+      return { x: (e.clientX - rect.left) * k, y: (e.clientY - rect.top) * k };
+    };
+    const indexAt = (clientX) => {
+      const g = svg._geom;
+      const rect = svg.getBoundingClientRect();
+      const x = (clientX - rect.left) * (g.W / rect.width);
+      const i = g.a + Math.floor((x - g.ml) / g.dayW);
+      return Math.max(g.a, Math.min(g.b - 1, i));
+    };
+    let brush = null;
+    chart.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !e.target.classList.contains('hit') || toSvg(e).x < svg._geom.ml) return;
+      brush = { start: indexAt(e.clientX), x: e.clientX, moved: false };
+      chart.setPointerCapture(e.pointerId);
+    });
+    chart.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && !e.target.closest('svg') && !brush) return;
+      const pos = toSvg(e);
+      showLevel(svg, brush ? null : pos.y);
+      cx.pointerY = pos.y;
+      if (pos.x < svg._geom.ml && !brush) { showHover(chart, svg, tip, null); return; }
+      const i = indexAt(e.clientX);
+      if (brush && Math.abs(e.clientX - brush.x) > 5) {
+        brush.moved = true;
+        const g = svg._geom;
+        const [lo, hi] = [Math.min(brush.start, i), Math.max(brush.start, i)];
+        const r = svg.querySelector('#cx-brush');
+        r.setAttribute('x', g.xl(lo).toFixed(1));
+        r.setAttribute('width', (g.xl(hi + 1) - g.xl(lo)).toFixed(1));
+        r.setAttribute('visibility', 'visible');
+      }
+      showHover(chart, svg, tip, i);
+    });
+    const endBrush = (e) => {
+      if (!brush) return;
+      const done = brush;
+      brush = null;
+      if (!done.moved) return;
+      const i = indexAt(e.clientX);
+      const lo = Math.min(done.start, i), hi = Math.max(done.start, i) + 1;
+      if (hi - lo >= 3) {
+        cx.range = [lo, hi];
+        updateClimate();
+      } else {
+        svg.querySelector('#cx-brush').setAttribute('visibility', 'hidden');
+      }
+    };
+    chart.addEventListener('pointerup', endBrush);
+    chart.addEventListener('pointercancel', () => { brush = null; });
+    chart.addEventListener('pointerleave', () => {
+      if (brush) return;
+      cx.hover = null;
+      showHover(chart, svg, tip, null);
+      showLevel(svg, null);
+      cx.pointerY = null;
+    });
+    chart.addEventListener('dblclick', () => {
+      if (!cx.range && cx.mode.month === null) return;
+      cx.range = null;
+      cx.mode.month = null;
+      updateClimate();
+    });
+    chart.addEventListener('keydown', (e) => {
+      const g = svg._geom;
+      cx.pointerY = null;
+      const moves = { ArrowLeft: -1, ArrowRight: 1, PageUp: -7, PageDown: 7 };
+      if (e.key in moves) {
+        e.preventDefault();
+        const from = cx.hover === null || cx.hover < g.a || cx.hover >= g.b ? (moves[e.key] > 0 ? g.a - 1 : g.b) : cx.hover;
+        showHover(chart, svg, tip, Math.max(g.a, Math.min(g.b - 1, from + moves[e.key])));
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        showHover(chart, svg, tip, e.key === 'Home' ? g.a : g.b - 1);
+      } else if (e.key === 'Escape') {
+        cx.hover = null;
+        showHover(chart, svg, tip, null);
+      }
+    });
+    chart.addEventListener('blur', () => { cx.hover = null; showHover(chart, svg, tip, null); });
+  }
+
+  // ----- summary for the visible range -----
+  function renderStats([a, b], rangeLabel) {
+    const box = $('#cx-stats');
+    const d = cx.data, clim = d.climatology;
+    let n = 0, sumHi = 0, sumLo = 0, hot = 0, cold = 0, recHi = 0, recLo = 0;
+    let warm = null, coldest = null, precip = 0, precipNormal = 0, wetDays = 0;
+    for (let i = a; i < b; i++) {
+      const s = cx.slot[i];
+      const h = d.high[i], l = d.low[i];
+      const year = Number(cx.iso[i].slice(0, 4));
+      if (h !== null && l !== null && clim.high.mean[s] !== null && clim.low.mean[s] !== null) {
+        n++;
+        sumHi += h - clim.high.mean[s];
+        sumLo += l - clim.low.mean[s];
+        const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+        if (qh && h > qh[Q90]) hot++;
+        if (ql && l < ql[Q10]) cold++;
+        if (clim.recordHigh[s] && clim.recordHigh[s].year === year) recHi++;
+        if (clim.recordLow[s] && clim.recordLow[s].year === year) recLo++;
+        if (warm === null || h > d.high[warm]) warm = i;
+        if (coldest === null || l < d.low[coldest]) coldest = i;
+      }
+      if (d.precipitation[i] !== null) {
+        precip += d.precipitation[i];
+        if (d.precipitation[i] >= 0.01) wetDays++;
+        if (clim.precipitationMean[s] !== null) precipNormal += clim.precipitationMean[s];
+      }
+    }
+    if (!n) { box.replaceChildren(el('div', { class: 'hint', text: 'No data in this range.' })); return; }
+    const stat = (k, v, sub, cls) => el('div', { class: 'cx-stat' }, el('div', { class: 'k', text: k }), el('div', { class: `v ${cls || ''}`, text: v }), sub ? el('div', { class: 's', text: sub }) : null);
+    const pct = precipNormal > 0 ? Math.round((precip / precipNormal) * 100) : null;
+    box.replaceChildren(
+      stat('Highs vs normal', fmtDelta(sumHi / n), `${rangeLabel}, ${n} days`, sumHi >= 0 ? 'hi' : 'lo'),
+      stat('Lows vs normal', fmtDelta(sumLo / n), `avg departure from ${clim.baseline.startYear}–${clim.baseline.endYear}`, sumLo >= 0 ? 'hi' : 'lo'),
+      stat('Warmest', fmtT(d.high[warm]), fmtDate(cx.iso[warm]), 'hi'),
+      stat('Coldest', fmtT(d.low[coldest]), fmtDate(cx.iso[coldest]), 'lo'),
+      stat('Unusually hot days', String(hot), 'high above 90th pct', 'hi'),
+      stat('Unusually cold nights', String(cold), 'low below 10th pct', 'lo'),
+      stat('Records set', `${recHi} / ${recLo}`, 'high / low, still standing'),
+      stat('Precipitation', fmtP(precip), `${pct === null ? '' : `${pct}% of normal (${fmtP(precipNormal)}) · `}${wetDays} wet days`));
+  }
+
+  // ---------------------------------------------------------------------
+  // Saved locations (for the picker and alias autocomplete)
+  // ---------------------------------------------------------------------
+  async function refreshSavedLocations() {
+    try {
+      ({ locations: savedLocations } = await api('/api/saved-locations'));
+    } catch {
+      savedLocations = [];
+    }
+    let datalist = $('#saved-aliases');
+    if (!datalist) { datalist = el('datalist', { id: 'saved-aliases' }); document.body.append(datalist); }
+    datalist.replaceChildren(...savedLocations.map((l) => el('option', { value: l.alias, label: l.name })));
+    if (current) {
+      // Rebuild just the helper so its dropdown reflects the change, keeping form input intact
+      const helper = $('#tool-card .loc');
+      const props = current.inputSchema.properties || {};
+      if (helper) helper.replaceWith(buildLocationHelper(props));
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------
+  function setStatus(kind, text) {
+    $('#status').className = `status ${kind}`;
+    $('#status-text').textContent = text;
+  }
+
+  $('#tool-filter').addEventListener('input', (e) => renderToolList(e.target.value));
+
+  async function boot() {
+    try {
+      ({ tools } = await api('/api/tools'));
+      setStatus('ok', `Connected · ${tools.length} tools`);
+    } catch (error) {
+      setStatus('err', 'Not connected');
+      $('#tool-card').replaceChildren(el('div', { class: 'error-box', text:
+        `Couldn't load tools from the MCP server: ${error.message}\n\nMake sure the console is running (npm run web) and check its terminal output.` }));
+      return;
+    }
+    await refreshSavedLocations();
+    const fromHash = decodeURIComponent(location.hash.slice(1));
+    const last = store.get('weather-console:last-tool');
+    if (fromHash === 'climate' || (!fromHash && last === 'climate')) {
+      renderToolList();
+      showClimateExplorer();
+      return;
+    }
+    const initial = [fromHash, last, 'get_forecast'].find((n) => n && tools.some((t) => t.name === n)) || (tools[0] && tools[0].name);
+    renderToolList();
+    if (initial) selectTool(initial);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

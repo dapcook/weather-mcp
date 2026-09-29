@@ -6,8 +6,21 @@
 import { DateTime } from 'luxon';
 
 /**
+ * Parse an ISO 8601 string for display in `timezone`.
+ *
+ * Strings with an offset ("2025-11-07T14:30:00+00:00", NOAA) are converted to
+ * `timezone`. Strings without one ("2025-11-07T14:30", "2025-11-07", Open-Meteo
+ * with timezone=auto) are already local time there, so they are read as-is in
+ * `timezone` rather than in the server's own zone.
+ */
+function parseInTimezone(isoString: string, timezone: string): DateTime {
+  return DateTime.fromISO(isoString, { zone: timezone });
+}
+
+/**
  * Format an ISO 8601 datetime string in the specified timezone
- * @param isoString - ISO 8601 datetime string (e.g., "2025-11-07T14:30:00+00:00")
+ * @param isoString - ISO 8601 datetime string (e.g., "2025-11-07T14:30:00+00:00");
+ *   strings without an offset are treated as local time in `timezone`
  * @param timezone - IANA timezone identifier (e.g., "America/New_York", "Asia/Tokyo")
  * @param format - Optional format style ('full', 'long', 'medium', 'short')
  * @returns Formatted datetime string in local timezone
@@ -18,14 +31,12 @@ export function formatInTimezone(
   format: 'full' | 'long' | 'medium' | 'short' = 'medium'
 ): string {
   try {
-    const dt = DateTime.fromISO(isoString, { setZone: false });
+    const zonedDt = parseInTimezone(isoString, timezone);
 
-    if (!dt.isValid) {
+    if (!zonedDt.isValid) {
       // Fallback to JavaScript Date if Luxon can't parse
       return new Date(isoString).toLocaleString('en-US', { timeZone: timezone });
     }
-
-    const zonedDt = dt.setZone(timezone);
 
     // Format based on requested style
     switch (format) {
@@ -53,13 +64,11 @@ export function formatInTimezone(
  */
 export function formatDateInTimezone(isoString: string, timezone: string): string {
   try {
-    const dt = DateTime.fromISO(isoString, { setZone: false });
+    const zonedDt = parseInTimezone(isoString, timezone);
 
-    if (!dt.isValid) {
+    if (!zonedDt.isValid) {
       return new Date(isoString).toLocaleDateString('en-US', { timeZone: timezone });
     }
-
-    const zonedDt = dt.setZone(timezone);
     return zonedDt.toLocaleString(DateTime.DATE_MED);
   } catch (error) {
     return new Date(isoString).toLocaleDateString('en-US', { timeZone: timezone });
@@ -74,16 +83,15 @@ export function formatDateInTimezone(isoString: string, timezone: string): strin
  */
 export function formatTimeInTimezone(isoString: string, timezone: string): string {
   try {
-    const dt = DateTime.fromISO(isoString, { setZone: false });
+    const zonedDt = parseInTimezone(isoString, timezone);
 
-    if (!dt.isValid) {
+    if (!zonedDt.isValid) {
       return new Date(isoString).toLocaleTimeString('en-US', {
         timeZone: timezone,
         timeZoneName: 'short'
       });
     }
 
-    const zonedDt = dt.setZone(timezone);
     return zonedDt.toLocaleString(DateTime.TIME_WITH_SHORT_OFFSET);
   } catch (error) {
     return new Date(isoString).toLocaleTimeString('en-US', {
@@ -123,11 +131,15 @@ export function guessTimezoneFromCoords(latitude: number, longitude: number): st
   // For production use, consider integrating a proper coordinate-to-timezone library
   // like tz-lookup or @photostructure/tz-lookup for accurate global coverage
 
-  // Map to common US timezones for North America based on longitude
+  // Map to common US timezones for North America based on longitude.
+  // The Central time zone is geographically wide (it reaches from the Great Lakes
+  // out to roughly the Kansas/Colorado border), so its longitude band is much wider
+  // than Eastern's. Boundaries below are tuned against known city coordinates
+  // (see timezone.test.ts) rather than an even four-way split of the continent.
   if (latitude >= 24 && latitude <= 50 && longitude >= -125 && longitude <= -66) {
-    if (longitude >= -75) return 'America/New_York';
-    if (longitude >= -87) return 'America/Chicago';
-    if (longitude >= -104) return 'America/Denver';
+    if (longitude >= -85) return 'America/New_York';
+    if (longitude >= -101) return 'America/Chicago';
+    if (longitude >= -115) return 'America/Denver';
     if (longitude >= -125) return 'America/Los_Angeles';
   }
 
@@ -151,8 +163,8 @@ export function formatTimeRangeInTimezone(
   timezone: string
 ): string {
   try {
-    const start = DateTime.fromISO(startTime, { setZone: false }).setZone(timezone);
-    const end = DateTime.fromISO(endTime, { setZone: false }).setZone(timezone);
+    const start = parseInTimezone(startTime, timezone);
+    const end = parseInTimezone(endTime, timezone);
 
     if (!start.isValid || !end.isValid) {
       return `${formatInTimezone(startTime, timezone, 'short')} - ${formatInTimezone(endTime, timezone, 'short')}`;

@@ -49,6 +49,7 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Snow depth on ground (current conditions, US only)
   - Snowfall accumulation forecasts with time periods
   - Ice accumulation forecasts for freezing rain events
+  - Precipitation type per forecast period (rain, snow, sleet, freezing rain, ...) with a wintry-mix note and icing warning (NEW - Unreleased)
   - Smart threshold-based display (filters trace amounts)
   - Unit conversions from metric to imperial
 - **Timezone-Aware Display**: All timestamps in local time (NEW in v1.2.0)
@@ -132,6 +133,11 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Evacuation recommendations based on proximity
   - Detailed fire attributes (type, location, status)
   - Data from NIFC WFIGS (National Interagency Fire Center)
+- **NOMADS Model-Run Forecasts & Model Comparison** (NEW - Unreleased)
+  - `get_forecast_nomads`: Raw forecast straight from the latest NOMADS/NCEP GFS model run
+  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), and ECMWF proxy (Open-Meteo) side by side for the same location/dates
+  - Per-model deterministic horizon handling (e.g. NAM ~84h, HRRR ~48h) with values marked N/A beyond each model's horizon
+  - HRRR (3km resolution) is opt-in and CONUS-only; requests outside the continental US are rejected with a clear error
 - **Service Status Checking**: Proactively verify API availability with health checks
 - **Enhanced Error Handling**: Detailed, actionable error messages with status page links
 - **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance
@@ -196,10 +202,10 @@ All settings have sensible defaults and can be omitted entirely.
 Control which MCP tools are exposed to reduce context overhead and customize functionality. By default, only **basic** tools are enabled.
 
 **Available Presets:**
-- `basic` (default): Essential weather tools (5 tools) - forecast, current_conditions, alerts, search_location, check_service_status
-- `standard`: Basic + historical_weather (6 tools)
-- `full`: Standard + air_quality (7 tools)
-- `all`: All available tools (16 tools) - includes marine_conditions, weather_imagery, lightning_activity, river_conditions, wildfire_info, save_location, list_saved_locations, get_saved_location, remove_saved_location
+- `basic` (default): Essential weather + saved-location tools (9 tools) - get_forecast, get_current_conditions, get_alerts, search_location, check_service_status, save_location, list_saved_locations, get_saved_location, remove_saved_location
+- `standard`: Basic + get_historical_weather (10 tools)
+- `full`: Standard + get_air_quality (11 tools)
+- `all`: All available tools (18 tools) - also includes get_forecast_nomads, get_model_comparison_forecast, get_marine_conditions, get_weather_imagery, get_lightning_activity, get_river_conditions, get_wildfire_info
 
 **Configuration Examples:**
 
@@ -212,7 +218,7 @@ ENABLED_TOOLS=all,-marine                       # Remove from preset
 ```
 
 **Tool Aliases:**
-Short names are supported: `forecast`, `current`, `conditions`, `alerts`, `warnings`, `historical`, `history`, `status`, `location`, `search`, `air_quality`, `aqi`, `marine`, `ocean`, `waves`, `imagery`, `radar`, `satellite`, `lightning`, `strikes`, `thunderstorm`
+Short names are supported: `forecast`, `nomads`, `gfs`, `model`, `forecast_nomads`, `compare`, `comparison`, `models`, `current`, `conditions`, `alerts`, `warnings`, `historical`, `history`, `status`, `location`, `search`, `air_quality`, `aqi`, `marine`, `ocean`, `waves`, `imagery`, `radar`, `satellite`, `lightning`, `strikes`, `thunderstorm`, `river`, `rivers`, `flood`, `streamflow`, `wildfire`, `wildfires`, `fire`, `fires`, `smoke`
 
 **Benefits:**
 - **Reduced Context**: Load only needed tools to reduce initial MCP context
@@ -459,14 +465,33 @@ You can also find coordinates manually:
 | Berlin, Germany | 52.5200 | 13.4050 |
 | Dubai, UAE | 25.2048 | 55.2708 |
 
+## Web Console (use the tools without an LLM)
+
+A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result.
+
+```bash
+npm run web
+```
+
+Then open http://127.0.0.1:8787.
+
+- **Uses the real MCP server.** The console starts `dist/index.js` as a child process and talks to it over MCP stdio, exactly like an AI client does, so results match what an LLM would see.
+- **Forms come from the tool schemas**, so new tools and parameters appear automatically.
+- **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
+- **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
+- **Climate explorer:** a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
+- **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
+- **Local only:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations.
+
 ## Available Tools
 
 ### 1. get_forecast (ENHANCED in v0.4.0, v1.2.0)
 Get weather forecast for any location worldwide.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `days` (optional): Number of days in forecast (1-16, default: 7)
 - `granularity` (optional): "daily" or "hourly" (default: "daily")
 - `include_precipitation_probability` (optional): Include rain chances (default: true)
@@ -487,6 +512,7 @@ Automatically selects the best data source: NOAA for US locations (more detailed
 - Temperature (high/low, feels like)
 - Sunrise and sunset times with daylight duration (NEW in v0.4.0)
 - Precipitation chances and amounts
+- Precipitation type when precipitation is expected: rain, drizzle, snow, sleet, freezing rain, freezing drizzle, or hail, with an icing warning for freezing rain, freezing drizzle, and sleet (NOAA and Open-Meteo sources)
 - Wind speed, direction, and gusts
 - Weather conditions and descriptions
 - UV index (for international locations)
@@ -499,8 +525,9 @@ Automatically selects the best data source: NOAA for US locations (more detailed
 Get current weather conditions for a location (US only).
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `include_fire_weather` (optional): Include fire weather indices (default: false)
 - `include_normals` (optional): Include climate normals for comparison (default: false, NEW in v1.2.0)
 
@@ -549,8 +576,9 @@ Converts location names to coordinates using the Open-Meteo Geocoding API. Retur
 Get active weather alerts, watches, warnings, and advisories for US locations.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `active_only` (optional): Show only active alerts (default: true)
 
 **Description:**
@@ -575,8 +603,9 @@ Retrieves current weather alerts from the NOAA API for safety-critical weather i
 Get historical weather observations for a location.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `start_date` (required): Start date in ISO format (YYYY-MM-DD)
 - `end_date` (required): End date in ISO format (YYYY-MM-DD)
 - `limit` (optional): Max observations to return (1-500, default: 168)
@@ -634,8 +663,9 @@ If you get "No historical data available":
 Get comprehensive air quality data for any location worldwide.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `forecast` (optional): Include hourly forecast for next 5 days (default: false)
 
 **Description:**
@@ -680,8 +710,9 @@ Check if the weather services are operational
 Get marine weather conditions including wave height, swell, ocean currents, and sea state with automatic source selection for Great Lakes and coastal bays.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `forecast` (optional): Include 5-day marine forecast (default: false)
 
 **Description:**
@@ -713,8 +744,9 @@ Provides comprehensive marine weather data with intelligent dual-source support:
 Get weather radar and precipitation imagery for visual weather analysis.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `type` (required): Imagery type - "precipitation", "radar", or "satellite" (Note: satellite not yet implemented)
 - `animated` (optional): Return animated loop vs static image (default: false)
 - `layers` (optional): Additional map layers (reserved for future use)
@@ -743,8 +775,9 @@ Provides access to weather radar and precipitation imagery from RainViewer API w
 Get real-time lightning strike detection and safety assessment for outdoor activity planning.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 100)
 - `timeWindow` (optional): Historical time window in minutes (1-180, default: 60)
 
@@ -784,8 +817,9 @@ Provides real-time lightning strike detection from the Blitzortung.org global li
 Monitor river levels and flood status using NOAA and USGS data sources.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 50)
 
 **Description:**
@@ -815,8 +849,9 @@ Provides comprehensive river and streamflow monitoring for flood safety and recr
 Monitor active wildfires and fire perimeters for safety and evacuation planning.
 
 **Parameters:**
-- `latitude` (required): Latitude coordinate (-90 to 90)
-- `longitude` (required): Longitude coordinate (-180 to 180)
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `radius` (optional): Search radius in kilometers (1-500, default: 100)
 
 **Description:**
@@ -954,6 +989,57 @@ Permanently removes a saved location from storage. The location data is deleted 
 - Confirmation of removal
 - Count of remaining saved locations
 
+### 17. get_forecast_nomads (NEW - Unreleased)
+Get a forecast straight from the latest NOMADS/NCEP GFS model run.
+
+**Parameters:**
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
+- `days` (optional): Number of days in forecast (1-10, default: 7)
+
+**Description:**
+Fetches and formats a forecast directly from the current NCEP GFS model run via NOMADS, rather than the blended/aggregated data used by `get_forecast`. Useful when you want raw model-run output specifically from NOMADS/GFS. Precipitation chance is derived from 6-hour forecast interval signals.
+
+**Examples:**
+```
+"Get the latest GFS model run forecast for Chicago"
+"What does the raw NOMADS forecast show for home this week?"
+```
+
+**Returns:**
+- Model name and model run time (UTC)
+- Daily high/low temperature
+- Precipitation chance and total
+- Peak wind speed
+- Average humidity
+
+### 18. get_model_comparison_forecast (NEW - Unreleased)
+Compare forecasts across multiple model sources (GFS, NAM, HRRR, ECMWF proxy) side by side.
+
+**Parameters:**
+- `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
+- `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
+- `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
+- `days` (optional): Number of forecast days to compare (1-10, default: 7)
+- `models` (optional): Array of models to include — `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf_proxy"` (or `"ecmwf"`, which maps to `"ecmwf_proxy"`). Defaults to `["gfs", "nam", "ecmwf_proxy"]`. `"hrrr"` is opt-in only since it's CONUS-only.
+
+**Description:**
+Pulls GFS and NAM model-run data from NOMADS and blends in ECMWF proxy guidance via Open-Meteo for longer-range context, so you can see how models agree or diverge for the same location and dates. HRRR (3km, CONUS-only) can be added explicitly for high-resolution short-range guidance. Each model has a different deterministic horizon:
+- **NAM:** ~84 hours — later days are shown as N/A
+- **HRRR:** ~48 hours — later days are shown as N/A; requests outside the continental US will fail for this model
+- **GFS / ECMWF proxy:** cover the full requested range
+
+**Examples:**
+```
+"Compare GFS and NAM forecasts for Denver this week"
+"Show me GFS, NAM, and HRRR side by side for Dallas"
+```
+
+**Returns:**
+- Per-model daily high/low temperature, precipitation, and wind (where available within each model's horizon)
+- Model run time and horizon notes (e.g., NAM/HRRR cutoff, HRRR CONUS-only restriction, ECMWF proxy caveat)
+
 ## Using Saved Locations with Weather Tools
 
 Once you've saved locations, you can use them with any weather tool by providing `location_name` instead of coordinates:
@@ -972,10 +1058,9 @@ get_forecast(location_name="home")
 "Are there any weather alerts for my work location?"
 ```
 
-**Currently Supported Tools:**
-- `get_forecast` - Weather forecasts using saved locations
+**Supported Tools:** every tool that takes coordinates: `get_forecast`, `get_forecast_nomads`, `get_model_comparison_forecast`, `get_current_conditions`, `get_alerts`, `get_historical_weather`, `get_air_quality`, `get_marine_conditions`, `get_weather_imagery`, `get_lightning_activity`, `get_river_conditions`, and `get_wildfire_info`.
 
-**Coming Soon:** Support for saved locations in all weather tools (current conditions, alerts, air quality, marine conditions, etc.)
+If you pass both `location_name` and coordinates, the saved location wins.
 
 ## Error Handling & Service Status
 

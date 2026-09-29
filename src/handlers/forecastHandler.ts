@@ -25,6 +25,7 @@ import {
 } from '../utils/snow.js';
 import { formatInTimezone, guessTimezoneFromCoords } from '../utils/timezone.js';
 import { getClimateNormals, formatNormals, getDateComponents } from '../utils/normals.js';
+import { getNoaaPrecipTypes, getOpenMeteoPrecipTypes, formatPrecipTypes } from '../utils/precipType.js';
 
 interface ForecastArgs {
   latitude?: number;
@@ -290,7 +291,7 @@ async function formatNOMADSForecast(
   output += `**Timezone:** ${forecast.timezone}\n\n`;
 
   for (let i = 0; i < numDays; i++) {
-    const dt = DateTime.fromISO(forecast.daily.time[i], { setZone: false }).setZone(forecast.timezone);
+    const dt = DateTime.fromISO(forecast.daily.time[i], { zone: forecast.timezone });
     output += `## ${dt.toLocaleString({ weekday: 'long', month: 'long', day: 'numeric' })}\n`;
 
     const high = forecast.daily.temperature_2m_max[i];
@@ -379,6 +380,17 @@ async function formatNOAAForecast(
   }
   output += `**Showing:** ${periods.length} ${granularity === 'hourly' ? 'hours' : 'periods'}\n\n`;
 
+  // Gridpoint data feeds precipitation types, severe weather, and snow/ice.
+  // Fetch it once; every section that uses it is optional.
+  let gridpointData: Awaited<ReturnType<typeof noaaService.getGridpointDataByCoordinates>> | null = null;
+  try {
+    gridpointData = await noaaService.getGridpointDataByCoordinates(latitude, longitude);
+  } catch (error) {
+    logger.warn('Gridpoint data unavailable; skipping precipitation type and snow/ice details', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+
   for (const period of periods) {
     // For hourly forecasts, use the start time as the header since period names are empty
     const periodHeader = granularity === 'hourly' && !period.name
@@ -396,6 +408,10 @@ async function formatNOAAForecast(
     // Add precipitation probability if requested and available
     if (include_precipitation_probability && period.probabilityOfPrecipitation?.value !== null && period.probabilityOfPrecipitation?.value !== undefined) {
       output += `**Precipitation Chance:** ${period.probabilityOfPrecipitation.value}%\n`;
+    }
+
+    if (gridpointData) {
+      output += formatPrecipTypes(getNoaaPrecipTypes(gridpointData.properties, period.startTime, period.endTime));
     }
 
     output += `**Wind:** ${period.windSpeed} ${period.windDirection}\n`;
@@ -416,13 +432,12 @@ async function formatNOAAForecast(
   output += `---\n`;
   output += `*Data source: NOAA National Weather Service (US)*\n`;
 
-  // Fetch gridpoint data once for both severe weather and winter weather
-  let gridpointData: Awaited<ReturnType<typeof noaaService.getGridpointDataByCoordinates>> | null = null;
-
   // Add severe weather probabilities if requested
   if (include_severe_weather) {
     try {
-      gridpointData = await noaaService.getGridpointDataByCoordinates(latitude, longitude);
+      if (!gridpointData) {
+        throw new Error('Gridpoint data unavailable');
+      }
       const severeWeatherSection = formatSevereWeather(gridpointData.properties);
       if (severeWeatherSection) {
         output += `\n${severeWeatherSection}`;
@@ -435,9 +450,8 @@ async function formatNOAAForecast(
 
   // Add winter weather (snowfall/ice) if available
   try {
-    // Fetch gridpoint data if we haven't already
     if (!gridpointData) {
-      gridpointData = await noaaService.getGridpointDataByCoordinates(latitude, longitude);
+      throw new Error('Gridpoint data unavailable');
     }
 
     // Calculate time range for forecast period
@@ -566,6 +580,13 @@ async function formatOpenMeteoForecast(
         output += `**Precipitation:** ${hourly.precipitation[i].toFixed(2)} in\n`;
       }
 
+      output += formatPrecipTypes(getOpenMeteoPrecipTypes({
+        rain: hourly.rain?.[i],
+        showers: hourly.showers?.[i],
+        snowfall: hourly.snowfall?.[i],
+        weatherCode: hourly.weather_code?.[i]
+      }));
+
       if (hourly.wind_speed_10m?.[i] !== undefined) {
         const windDir = hourly.wind_direction_10m?.[i] !== undefined
           ? ` ${getWindDirection(hourly.wind_direction_10m[i])}`
@@ -594,7 +615,7 @@ async function formatOpenMeteoForecast(
 
     for (let i = 0; i < numDays; i++) {
       // Use timezone-aware date formatting
-      const dt = DateTime.fromISO(daily.time[i], { setZone: false }).setZone(forecast.timezone);
+      const dt = DateTime.fromISO(daily.time[i], { zone: forecast.timezone });
       output += `## ${dt.toLocaleString({ weekday: 'long', month: 'long', day: 'numeric' })}\n`;
 
       if (daily.temperature_2m_max?.[i] !== undefined && daily.temperature_2m_min?.[i] !== undefined) {
@@ -607,12 +628,12 @@ async function formatOpenMeteoForecast(
 
       // Include sunrise/sunset data with timezone
       if (daily.sunrise?.[i]) {
-        const sunrise = DateTime.fromISO(daily.sunrise[i], { setZone: false }).setZone(forecast.timezone);
+        const sunrise = DateTime.fromISO(daily.sunrise[i], { zone: forecast.timezone });
         output += `**Sunrise:** ${sunrise.toLocaleString(DateTime.TIME_SIMPLE)}\n`;
       }
 
       if (daily.sunset?.[i]) {
-        const sunset = DateTime.fromISO(daily.sunset[i], { setZone: false }).setZone(forecast.timezone);
+        const sunset = DateTime.fromISO(daily.sunset[i], { zone: forecast.timezone });
         output += `**Sunset:** ${sunset.toLocaleString(DateTime.TIME_SIMPLE)}\n`;
       }
 
@@ -629,6 +650,13 @@ async function formatOpenMeteoForecast(
       if (daily.precipitation_sum?.[i] !== undefined && daily.precipitation_sum[i] > 0) {
         output += `**Precipitation:** ${daily.precipitation_sum[i].toFixed(2)} in\n`;
       }
+
+      output += formatPrecipTypes(getOpenMeteoPrecipTypes({
+        rain: daily.rain_sum?.[i],
+        showers: daily.showers_sum?.[i],
+        snowfall: daily.snowfall_sum?.[i],
+        weatherCode: daily.weather_code?.[i]
+      }));
 
       if (daily.wind_speed_10m_max?.[i] !== undefined) {
         const windDir = daily.wind_direction_10m_dominant?.[i] !== undefined

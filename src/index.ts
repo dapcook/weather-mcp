@@ -50,6 +50,7 @@ import { handleGetModelComparisonForecast } from './handlers/modelComparisonHand
 import { withAnalytics, analytics } from './analytics/index.js';
 import { randomUUID } from 'crypto';
 import { logRequestLifecycle } from './utils/requestLogger.js';
+import { applySavedLocation } from './utils/locationResolver.js';
 
 /**
  * Server information
@@ -275,7 +276,7 @@ const TOOL_DEFINITIONS = {
 
   get_model_comparison_forecast: {
     name: 'get_model_comparison_forecast' as const,
-    description: 'Compare forecasts across multiple model sources in one response. Supports GFS (NOMADS), NAM (NOMADS, ~84h deterministic horizon), and ECMWF proxy guidance via Open-Meteo. For 7+ day requests, NAM values are shown through its horizon and then marked as N/A.',
+    description: 'Compare forecasts across multiple model sources in one response. Supports GFS (NOMADS), NAM (NOMADS, ~84h deterministic horizon), HRRR (NOMADS, CONUS-only, ~48h deterministic horizon), and ECMWF proxy guidance via Open-Meteo. For requests beyond a model\'s horizon, its values are shown through the horizon and then marked as N/A. HRRR requests outside the continental US will fail — use GFS or NAM for those locations.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -304,10 +305,10 @@ const TOOL_DEFINITIONS = {
         },
         models: {
           type: 'array' as const,
-          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf_proxy"]. You may also pass "ecmwf" and it will map to "ecmwf_proxy".',
+          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf_proxy"]. You may also pass "ecmwf" and it will map to "ecmwf_proxy". "hrrr" is opt-in only (not part of the default set) since it is CONUS-only.',
           items: {
             type: 'string' as const,
-            enum: ['gfs', 'nam', 'ecmwf_proxy', 'ecmwf']
+            enum: ['gfs', 'nam', 'hrrr', 'ecmwf_proxy', 'ecmwf']
           }
         }
       },
@@ -323,15 +324,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         include_fire_weather: {
           type: 'boolean' as const,
@@ -344,7 +349,7 @@ const TOOL_DEFINITIONS = {
           default: false
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -356,15 +361,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         active_only: {
           type: 'boolean' as const,
@@ -372,7 +381,7 @@ const TOOL_DEFINITIONS = {
           default: true
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -384,15 +393,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         start_date: {
           type: 'string' as const,
@@ -410,7 +423,7 @@ const TOOL_DEFINITIONS = {
           default: 168
         }
       },
-      required: ['latitude', 'longitude', 'start_date', 'end_date']
+      required: ['start_date', 'end_date']
     }
   },
 
@@ -454,15 +467,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         forecast: {
           type: 'boolean' as const,
@@ -470,7 +487,7 @@ const TOOL_DEFINITIONS = {
           default: false
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -482,15 +499,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         forecast: {
           type: 'boolean' as const,
@@ -498,7 +519,7 @@ const TOOL_DEFINITIONS = {
           default: false
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -510,15 +531,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         type: {
           type: 'string' as const,
@@ -539,7 +564,7 @@ const TOOL_DEFINITIONS = {
           }
         }
       },
-      required: ['latitude', 'longitude', 'type']
+      required: ['type']
     }
   },
 
@@ -551,15 +576,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         radius: {
           type: 'number' as const,
@@ -576,7 +605,7 @@ const TOOL_DEFINITIONS = {
           default: 60
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -588,15 +617,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         radius: {
           type: 'number' as const,
@@ -606,7 +639,7 @@ const TOOL_DEFINITIONS = {
           default: 50
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -618,15 +651,19 @@ const TOOL_DEFINITIONS = {
       properties: {
         latitude: {
           type: 'number' as const,
-          description: 'Latitude of the location (-90 to 90)',
+          description: 'Latitude of the location (-90 to 90). Not required if location_name is provided.',
           minimum: -90,
           maximum: 90
         },
         longitude: {
           type: 'number' as const,
-          description: 'Longitude of the location (-180 to 180)',
+          description: 'Longitude of the location (-180 to 180). Not required if location_name is provided.',
           minimum: -180,
           maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
         },
         radius: {
           type: 'number' as const,
@@ -636,7 +673,7 @@ const TOOL_DEFINITIONS = {
           default: 100
         }
       },
-      required: ['latitude', 'longitude']
+      required: []
     }
   },
 
@@ -740,6 +777,23 @@ const TOOL_DEFINITIONS = {
 };
 
 /**
+ * Tools whose handlers only take latitude/longitude. A saved location_name is
+ * resolved to coordinates before the handler runs (get_forecast,
+ * get_forecast_nomads and get_model_comparison_forecast resolve it themselves).
+ */
+const SAVED_LOCATION_TOOLS: ReadonlySet<string> = new Set([
+  'get_current_conditions',
+  'get_alerts',
+  'get_historical_weather',
+  'get_air_quality',
+  'get_marine_conditions',
+  'get_weather_imagery',
+  'get_lightning_activity',
+  'get_river_conditions',
+  'get_wildfire_info',
+]);
+
+/**
  * Handler for listing available tools
  * Only returns tools that are enabled in the configuration
  */
@@ -786,6 +840,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       throw new Error(`Tool '${name}' is not enabled. Please check your ENABLED_TOOLS configuration.`);
     }
 
+    const toolArgs = SAVED_LOCATION_TOOLS.has(name) ? applySavedLocation(args, locationStore) : args;
+
     switch (name) {
       case 'get_forecast':
         return completeSuccess(await withAnalytics('get_forecast', async () =>
@@ -804,17 +860,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_current_conditions':
         return completeSuccess(await withAnalytics('get_current_conditions', async () =>
-          handleGetCurrentConditions(args, noaaService, openMeteoService, nceiService)
+          handleGetCurrentConditions(toolArgs, noaaService, openMeteoService, nceiService)
         ));
 
       case 'get_alerts':
         return completeSuccess(await withAnalytics('get_alerts', async () =>
-          handleGetAlerts(args, noaaService)
+          handleGetAlerts(toolArgs, noaaService)
         ));
 
       case 'get_historical_weather':
         return completeSuccess(await withAnalytics('get_historical_weather', async () =>
-          handleGetHistoricalWeather(args, noaaService, openMeteoService)
+          handleGetHistoricalWeather(toolArgs, noaaService, openMeteoService)
         ));
 
       case 'check_service_status':
@@ -829,17 +885,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_air_quality':
         return completeSuccess(await withAnalytics('get_air_quality', async () =>
-          handleGetAirQuality(args, openMeteoService)
+          handleGetAirQuality(toolArgs, openMeteoService)
         ));
 
       case 'get_marine_conditions':
         return completeSuccess(await withAnalytics('get_marine_conditions', async () =>
-          handleGetMarineConditions(args, noaaService, openMeteoService)
+          handleGetMarineConditions(toolArgs, noaaService, openMeteoService)
         ));
 
       case 'get_weather_imagery':
         return completeSuccess(await withAnalytics('get_weather_imagery', async () => {
-          const result = await getWeatherImagery(args as any);
+          const result = await getWeatherImagery(toolArgs as any);
           const formatted = formatWeatherImageryResponse(result);
           return {
             content: [
@@ -853,7 +909,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_lightning_activity':
         return completeSuccess(await withAnalytics('get_lightning_activity', async () => {
-          const result = await getLightningActivity(args as any);
+          const result = await getLightningActivity(toolArgs as any);
           const formatted = formatLightningActivityResponse(result);
           return {
             content: [
@@ -867,12 +923,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'get_river_conditions':
         return completeSuccess(await withAnalytics('get_river_conditions', async () =>
-          handleGetRiverConditions(args, noaaService)
+          handleGetRiverConditions(toolArgs, noaaService)
         ));
 
       case 'get_wildfire_info':
         return completeSuccess(await withAnalytics('get_wildfire_info', async () =>
-          handleGetWildfireInfo(args, nifcService)
+          handleGetWildfireInfo(toolArgs, nifcService)
         ));
 
       case 'save_location':

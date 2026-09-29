@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Precipitation Type in Forecasts** - `get_forecast` now names what will fall in each period when precipitation is expected: rain, drizzle, snow, sleet, freezing rain, freezing drizzle, or hail, with a wintry-mix note and an icing warning for freezing rain/drizzle and sleet
+  - NOAA (US): from gridpoint `weather` data, with NWS likelihood per type ("rain (likely), snow (chance)"); reuses the gridpoint request already made for snow/ice
+  - Open-Meteo: rain/shower and snowfall amounts that were already fetched but not shown, plus freezing rain/drizzle and hail from the WMO weather code (Open-Meteo has no sleet category)
+  - Not yet available for the NOMADS/GFS source
+- **Saved Locations in Every Tool** - `location_name` now works with all coordinate-based tools, not just forecasts: `get_current_conditions`, `get_alerts`, `get_historical_weather`, `get_air_quality`, `get_marine_conditions`, `get_weather_imagery`, `get_lightning_activity`, `get_river_conditions`, and `get_wildfire_info` (resolved centrally via `applySavedLocation()`). Calling a tool with no location now explains both options instead of reporting an invalid latitude
+- **NOMADS Model-Run Forecasts** - New `get_forecast_nomads` tool returns a forecast straight from the latest NOMADS/NCEP GFS model run (daily high/low, precipitation chance/total, peak wind, average humidity), rather than the blended data used by `get_forecast`
+- **Multi-Model Comparison** - New `get_model_comparison_forecast` tool compares GFS, NAM, and ECMWF proxy (Open-Meteo) forecasts side by side for the same location/dates, including horizon notes (e.g. NAM's ~84h deterministic cutoff)
+- **HRRR Model Support** - Added NCEP HRRR (3km, CONUS-only) as an opt-in model in `get_model_comparison_forecast`
+  - Uses only the synoptic cycles (00/06/12/18Z) that post the full 48h horizon
+  - Requests outside a CONUS bounding box are rejected with a clear error (use GFS or NAM instead)
+  - HRRR values beyond its ~48h deterministic horizon are marked N/A
+  - Not part of the default model set since it's CONUS-only; pass `models: ["hrrr", ...]` to opt in
+- **Web Console** - `npm run web` serves a local page (http://127.0.0.1:8787) for running every MCP tool without an LLM. It drives the real MCP server over stdio, builds forms from each tool's input schema, and adds saved-location, place-search, and browser-location helpers. Radar results are drawn on an Esri basemap with highways, labels, and a location pin, with pan and zoom. Loopback-only, with Host/Origin checks against DNS rebinding and CSRF
+- **Climate Explorer in the Web Console** - WeatherSpark-style daily high/low chart for any year since 1940 at any location, over per-calendar-day percentile bands (25th–75th, 10th–90th) and average lines, with a selectable normals baseline (1991–2020 default). Hover tooltips give each day's percentile rank, normal range and records; drag to zoom, month/year stepping, last-12-months view, °F/°C, optional record lines and precipitation strip, and a summary of the visible range. Backed by a new `/api/climate` endpoint that fetches the full daily record once (`OpenMeteoService.getDailyTemperatureRecord`) and computes the climatology in `src/utils/climatology.ts`
+- **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
+
+### Fixed
+- **Wrong Dates and Times for Open-Meteo Data** - Open-Meteo returns local times without a UTC offset (`2026-09-28`, `2026-09-28T14:00`), which were read as the server's local time and then converted, shifting them whenever the server and location zones differ. Forecast day headers and hourly times for places west of the server showed the previous day/hours early (e.g. Denali's Monday shown as "Sunday, September 27", sunrise 3 hours early); marine forecast days were affected the same way
+  - Timezone helpers and the forecast/marine handlers now read offset-less times as local time at the location (Luxon `zone`), while times with an offset (NOAA) still convert
+  - `get_historical_weather` showed requested dates a day early for US servers (`new Date("2026-09-01")` is UTC midnight) and times in the server's zone; it now shows the requested dates as given and times in the location's timezone, with a Timezone line
+  - Regression tests pin Luxon's default zone to UTC+14 so they fail on the old behavior regardless of the machine's timezone
+- **NAM Grid Lookup** - Fixed `extractNearestValue` returning null/0 for all NAM fields (temperature, humidity, wind, precipitation). NAM's Lambert Conformal Conic grid is curvilinear (parallel flat lat/lon arrays), unlike GFS's separable regular lat/lon grid, so the previous `row * cols + col` index formula produced out-of-bounds lookups for NAM specifically
+- **Central US Timezone Mis-Bucketing** - Corrected timezone assignment for Central US locations that were being bucketed into the wrong US timezone
+
 ## [1.6.1] - 2025-11-10
 
 ### Fixed

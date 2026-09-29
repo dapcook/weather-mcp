@@ -1,6 +1,6 @@
-# CLAUDE.md - AI Assistant Guide for Weather MCP Server
+# AGENTS.md - AI Assistant Guide for Weather MCP Server
 
-This document provides context and guidelines for AI assistants (Claude, etc.) working with this codebase.
+This document provides context and guidelines for AI assistants (Codex, etc.) working with this codebase.
 
 ## Project Overview
 
@@ -335,9 +335,9 @@ security: Security improvements
 
 Addresses <issue/doc reference>.
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Codex](https://Codex.com/Codex)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Codex <noreply@anthropic.com>
 ```
 
 ## Saved Locations Feature (v1.7.0)

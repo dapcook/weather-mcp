@@ -387,6 +387,55 @@ export class OpenMeteoService {
   }
 
   /**
+   * Get daily high, low and precipitation only, for long ranges such as the
+   * whole 1940-present record. Much lighter than getHistoricalWeather, which
+   * requests a dozen daily variables.
+   *
+   * @param latitude - Latitude coordinate (-90 to 90)
+   * @param longitude - Longitude coordinate (-180 to 180)
+   * @param startDate - Start date (YYYY-MM-DD)
+   * @param endDate - End date (YYYY-MM-DD)
+   * @returns Daily data in °F and inches, in the location's local timezone
+   */
+  async getDailyTemperatureRecord(
+    latitude: number,
+    longitude: number,
+    startDate: string,
+    endDate: string
+  ): Promise<OpenMeteoHistoricalResponse> {
+    validateLatitude(latitude);
+    validateLongitude(longitude);
+
+    const params: Record<string, string | number> = {
+      latitude,
+      longitude,
+      start_date: startDate,
+      end_date: endDate,
+      daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum',
+      temperature_unit: 'fahrenheit',
+      precipitation_unit: 'inch',
+      timezone: 'auto'
+    };
+
+    const cacheKey = Cache.generateKey('openmeteo-daily-record', latitude, longitude, startDate, endDate);
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached as OpenMeteoHistoricalResponse;
+      }
+    }
+
+    const response = await this.makeRequest<OpenMeteoHistoricalResponse>('/archive', params);
+    this.validateResponse(response, startDate, endDate, false);
+
+    if (CacheConfig.enabled) {
+      // The newest days may still be revised, so don't keep this forever
+      this.cache.set(cacheKey, response, getHistoricalDataTTL(endDate));
+    }
+    return response;
+  }
+
+  /**
    * Build request parameters for historical weather data
    * @private
    */
