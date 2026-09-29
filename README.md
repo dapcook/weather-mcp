@@ -1173,14 +1173,14 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,042 tests** across unit and integration test suites (111 new tests in v1.6.0)
-- **100% coverage** on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
-- **100% pass rate** with comprehensive security and boundary validation
-- All tests execute in ~2 seconds
+- **1,196 tests** across unit (1,134 tests in 35 files) and integration (62 tests in 4 files) suites
+- **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
+- **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
+- **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (965 tests) - Cache, validation, units, errors, config, retry logic, normals, snow, timezone, distance, security, geohash
-- **Integration Tests** (77 tests) - Error recovery, service status checks, safety & hazards features
+- **Unit Tests** (1,134 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
 
@@ -1205,7 +1205,9 @@ See [TESTING_GUIDE.md](./docs/testing/TESTING_GUIDE.md) for comprehensive manual
 **Build & Run:**
 - `npm run build` - Compile TypeScript to JavaScript
 - `npm run dev` - Run the server in development mode with tsx
-- `npm start` - Run the compiled server
+- `npm start` - Run the compiled server (stdio, for AI clients that launch it)
+- `npm run web` - Build, then run the web server: the `/mcp` endpoint for AI clients plus the [web console](#web-console-use-the-tools-without-an-llm)
+- `docker compose up -d --build` - Run that same web server in a container (see the [Docker guide](./docs/DOCKER.md))
 
 **Testing:**
 - `npm test` - Run all automated tests
@@ -1223,49 +1225,41 @@ See [TESTING_GUIDE.md](./docs/testing/TESTING_GUIDE.md) for comprehensive manual
 ```
 weather-mcp/
 ├── src/
-│   ├── index.ts                 # Main MCP server
-│   ├── config/
-│   │   ├── api.ts               # API configuration (NCEI token) - NEW in v1.2.0
-│   │   ├── cache.ts             # Cache configuration and TTL strategies
-│   │   └── displayThresholds.ts # Display thresholds for weather conditions
-│   ├── errors/
-│   │   └── ApiError.ts          # Custom error class hierarchy
-│   ├── handlers/
-│   │   ├── alertsHandler.ts     # Weather alerts tool handler
-│   │   ├── currentConditionsHandler.ts  # Current conditions handler
-│   │   ├── forecastHandler.ts   # Forecast tool handler
-│   │   ├── historicalWeatherHandler.ts  # Historical weather handler
-│   │   ├── airQualityHandler.ts # Air quality handler
-│   │   ├── marineConditionsHandler.ts   # Marine conditions handler
-│   │   ├── locationHandler.ts   # Location search handler
-│   │   └── statusHandler.ts     # Service status handler
-│   ├── services/
-│   │   ├── noaa.ts              # NOAA API service
-│   │   ├── openmeteo.ts         # Open-Meteo API service
-│   │   └── ncei.ts              # NCEI climate normals service - NEW in v1.2.0
-│   ├── types/
-│   │   ├── noaa.ts              # NOAA TypeScript type definitions
-│   │   └── openmeteo.ts         # Open-Meteo TypeScript type definitions
-│   └── utils/
-│       ├── cache.ts             # LRU cache implementation
-│       ├── logger.ts            # Structured logging utilities
-│       ├── temperatureConversion.ts  # Temperature conversion helpers
-│       ├── units.ts             # Unit conversion utilities
-│       ├── validation.ts        # Input validation functions
-│       ├── normals.ts           # Climate normals utilities - NEW in v1.2.0
-│       ├── snow.ts              # Snow and ice data utilities - NEW in v1.2.0
-│       └── timezone.ts          # Timezone-aware formatting - NEW in v1.2.0
+│   ├── index.ts                 # stdio entry point (node dist/index.js)
+│   ├── mcpServer.ts             # Tool registry and handlers (createServices, createMcpServer)
+│   ├── web/                     # HTTP server for /mcp and the web console (npm run web)
+│   │   ├── server.ts            #   entry point
+│   │   ├── app.ts               #   routes: /mcp, /, /api/*, /health
+│   │   ├── config.ts            #   WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN
+│   │   └── access.ts            #   Host, Origin and bearer-token checks
+│   ├── handlers/                # One handler per MCP tool (forecast, NOMADS forecast, model
+│   │                            #   comparison, current conditions, alerts, historical, air quality,
+│   │                            #   marine, imagery, lightning, river, wildfire, locations, status)
+│   ├── services/                # API clients and stores: noaa, openmeteo, nomads, modelComparison,
+│   │                            #   nominatim, geocoding, ncei, nifc, rainviewer, blitzortung,
+│   │                            #   locationStore (USGS Water Services is called from noaa.ts)
+│   ├── types/                   # TypeScript type definitions
+│   ├── utils/                   # cache, validation, units, timezone, normals, snow, precipType,
+│   │                            #   climatology, locationResolver, gribGrid, logger, and more
+│   ├── config/                  # cache, tools (presets and aliases), api, displayThresholds
+│   ├── analytics/               # Optional, off by default
+│   └── errors/                  # Custom error class hierarchy
+├── web/
+│   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # Unit tests (427 tests) - 93 new tests in v1.2.0
-│   └── integration/             # Integration tests (19 tests)
+│   ├── unit/                    # 1,134 tests, no network
+│   └── integration/             # 62 tests, live APIs
+├── docs/                        # Documentation (start at docs/README.md)
+├── Dockerfile, docker-compose.yml, .env.example
 ├── dist/                        # Compiled JavaScript (generated)
-├── docs/                        # Documentation
 └── package.json
 ```
 
+The full annotated tree is in [CLAUDE.md](./CLAUDE.md).
+
 ## API Information
 
-This server uses three weather APIs:
+This server uses public weather APIs that need no API key (an optional NCEI token adds official US climate normals). The three main ones are below; the rest are listed under [Additional Data Sources](#additional-data-sources).
 
 ### NOAA Weather API (Real-time, US)
 - **Base URL**: https://api.weather.gov
@@ -1301,6 +1295,20 @@ This server uses three weather APIs:
 - **Data**: Hourly or daily temperature, precipitation, wind, humidity, pressure, cloud cover
 - **Resolution**: 9-25km grid resolution from reanalysis models
 - **Delay**: 5-day delay for most recent data
+
+### Additional Data Sources
+
+| Source | Used for | Notes |
+|---|---|---|
+| **NOAA NOMADS** (`nomads.ncep.noaa.gov`) | `get_forecast_nomads`, `get_model_comparison_forecast`: GFS, NAM and HRRR model runs | GRIB files, decoded locally; HRRR is CONUS only |
+| **Open-Meteo** air quality, marine and archive endpoints | `get_air_quality`, `get_marine_conditions`, historical data, climate explorer | Same free non-commercial terms as the forecast API |
+| **US Census geocoder**, **Nominatim** (OpenStreetMap), **Open-Meteo geocoding** | `search_location`: tried in that order with automatic fallback | `save_location` and the web console's place search use Nominatim only, which is limited to 1 request per second |
+| **NOAA NWPS** (`api.water.noaa.gov`) and **USGS Water Services** | `get_river_conditions` | US only |
+| **NIFC WFIGS** (ArcGIS REST) | `get_wildfire_info` | US only |
+| **RainViewer** | `get_weather_imagery`, radar map in the web console | Precipitation radar tiles; free tiles go to zoom level 7 |
+| **Blitzortung.org** community MQTT broker | `get_lightning_activity` | Plain (unencrypted) MQTT; see `.env.example` for how to use a TLS broker |
+| **NOAA NCEI** (optional token) | Official US climate normals | Falls back to Open-Meteo computed normals |
+| **Esri ArcGIS Online** map tiles | Basemap under the radar in the web console only | Loaded by your browser, not the server |
 
 For more details on NOAA APIs, see [NOAA_API_RESEARCH.md](./docs/NOAA_API_RESEARCH.md).
 
@@ -1370,22 +1378,24 @@ This project takes security seriously and implements multiple layers of protecti
 **Dependency Security:**
 - Automated dependency scanning via `npm audit`
 - GitHub Dependabot configured for weekly security updates
-- Minimal dependency footprint (3 runtime dependencies)
-- Zero known vulnerabilities in current dependencies
+- Small dependency footprint (7 runtime dependencies)
+- Run `npm audit` regularly; Dependabot opens weekly update pull requests
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (247 tests) with 100% coverage on critical utilities
+- Comprehensive test suite (1,196 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 
+**Network exposure (web server and Docker):**
+- The HTTP `/mcp` endpoint and web console exist only if you run `npm run web` or the Docker container; the default stdio server opens no network port
+- They listen on `127.0.0.1` by default, reject unknown `Host` names (DNS rebinding) and other websites' `Origin` (cross-site requests), and support a bearer token (`WEATHER_MCP_TOKEN`) for `/mcp` and the console API
+- The container runs as a non-root user with a read-only filesystem and no extra Linux capabilities. It is meant for a trusted home network, not the internet; see [Security in the Docker guide](./docs/DOCKER.md#security)
+
 ### Security Audit
 
-The project has undergone a comprehensive security audit:
-- **Overall Security Posture:** B+ (Good)
-- **Risk Level:** LOW
-- **Vulnerabilities:** Zero critical or high-severity issues
-- See [SECURITY_AUDIT.md](./docs/development/SECURITY_AUDIT.md) for full audit report
+The project has undergone security audits; the most recent is for v1.6.0 (2025-11-10). It predates the saved locations, web console, HTTP endpoint, and Docker additions.
+- See [SECURITY_AUDIT_V1.6.md](./docs/development/SECURITY_AUDIT_V1.6.md) for the audit report and [SECURITY.md](./SECURITY.md) for the audit history
 
 ### Reporting Security Issues
 

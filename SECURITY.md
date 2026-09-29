@@ -6,6 +6,7 @@ We release patches for security vulnerabilities for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 1.7.x   | :white_check_mark: |
 | 1.6.x   | :white_check_mark: |
 | 1.5.x   | :white_check_mark: |
 | 1.4.x   | :white_check_mark: |
@@ -62,11 +63,15 @@ Please include the following information in your report:
 
 ### Dependency Security
 
-This project has minimal runtime dependencies to reduce attack surface:
+This project keeps its runtime dependencies few to reduce attack surface:
 
 - `@modelcontextprotocol/sdk` - Official MCP SDK from Anthropic
-- `axios` - Well-maintained HTTP client
-- `dotenv` - Simple environment variable loader
+- `axios` - HTTP client
+- `dotenv` - Environment variable loader
+- `luxon` - Time zone and date handling
+- `mqtt` - Blitzortung lightning feed
+- `ngeohash` - Geohash encoding (lightning subscriptions)
+- `@mattnucc/gribberish` - GRIB decoding for NOMADS model data (a native module; its WebAssembly build is used on platforms without a native one)
 
 **Automated Scanning:**
 
@@ -110,26 +115,40 @@ updates:
 - Run the server with minimum necessary privileges
 - Keep Node.js updated to the latest LTS version
 - Use `npm ci` instead of `npm install` in production for reproducible builds
-- Consider running in a containerized environment for isolation
+- Consider running in a containerized environment for isolation; the included `Dockerfile` and `docker-compose.yml` run as a non-root user with a read-only filesystem and all Linux capabilities dropped (see [docs/DOCKER.md](./docs/DOCKER.md#security))
+- If you expose the HTTP endpoint beyond your own machine, set `WEATHER_MCP_TOKEN` and `WEB_ALLOWED_HOSTS` (see below)
 
 ## Known Security Considerations
 
-### No Authentication Required
+### No Authentication Required for the Weather APIs
 
-This MCP server uses public weather APIs (NOAA and Open-Meteo) that do not require API keys or authentication. This is by design and reduces security complexity.
+This MCP server uses public weather APIs (NOAA, Open-Meteo, and others) that do not require API keys or authentication. This is by design and reduces security complexity. The only optional credential is a free NCEI token (`NCEI_API_TOKEN`) for official US climate normals.
+
+### Network-Exposed Mode (HTTP `/mcp` and Web Console)
+
+By default the server uses stdio and opens no network port. `npm run web` (and the Docker container) additionally serve an MCP endpoint at `/mcp` and a web console over HTTP:
+
+- **Localhost by default:** it listens on `127.0.0.1` unless `WEB_HOST` says otherwise. The container listens on all interfaces and expects a token.
+- **Set a token when reachable by others:** `WEATHER_MCP_TOKEN` (16+ characters) is required as `Authorization: Bearer <token>` on `/mcp` and the console's `/api/*` routes, and is compared in constant time. Without it, anyone who can reach the port can use every tool, including saving and deleting saved locations. The server logs a warning when it listens beyond localhost without one.
+- **Host and Origin checks:** requests must use `localhost` or a name in `WEB_ALLOWED_HOSTS` (blocks DNS rebinding), and browser requests must come from those same names (blocks cross-site requests).
+- **Plain HTTP:** the server does not provide TLS, so the token travels unencrypted. Use it on a trusted network, or put it behind a private network or reverse proxy that provides HTTPS. Do not forward its port to the internet.
+- **Console API limits:** `POST` bodies must be JSON and are capped at 64 KB; only tools the server lists can be called, and every call goes through the normal input validation
+- **Logs:** request paths are logged without their query strings, because those carry coordinates and place names
+- **Stateless `/mcp`:** each request gets its own MCP server and transport, so nothing is shared between clients except the read-only weather caches and the saved-locations file.
 
 ### Data Privacy
 
-- **Location Data**: The server processes geographic coordinates (latitude/longitude) transiently for API requests
-- **No Personal Data**: No personal identifiable information is collected or stored
-- **Local Cache**: Weather data is cached locally on the user's machine
-- **No Tracking**: The server does not track users or send telemetry
+- **Location Data**: Coordinates are processed for API requests, and redacted in logs (rounded to about 1.1 km) unless `LOG_PII=true`
+- **Saved Locations**: If you use the saved locations feature, the names and coordinates you choose are stored in a local JSON file (`~/.weather-mcp/locations.json`, or `locations.json` in `WEATHER_MCP_DATA_DIR`). They can identify where you live or visit, so keep that file (or the Docker `data/` folder) private and out of version control. The file itself stays on your machine, but the coordinates in it are sent to the weather services whenever you query a saved location (like any other query), and a place you save by name is looked up through Nominatim
+- **No Other Personal Data**: No account, email, or other personal information is collected
+- **Local Cache**: Weather data is cached in memory on the machine running the server
+- **No Tracking by Default**: Anonymous usage analytics are opt-in (`ANALYTICS_ENABLED=true`, off by default), and never include coordinates or location names
 
 ### Network Security
 
-- All external API calls use **HTTPS only**
-- Certificate validation is enabled by default (via axios)
-- No sensitive data is transmitted to external services
+- External API calls use **HTTPS**, with certificate validation enabled by default (via axios), with one exception: the lightning feed (`get_lightning_activity`) connects to the Blitzortung community MQTT broker, which is **plain, unencrypted MQTT**. It only receives geohash subscriptions (roughly 4 to 40 km precision, not exact coordinates); set `BLITZORTUNG_MQTT_URL` to a TLS broker to avoid this (see `.env.example`)
+- Place searches send the place name you typed to Nominatim, the US Census geocoder, and/or Open-Meteo
+- The web console's radar map makes your browser (not the server) request map tiles from Esri and RainViewer
 
 ## Security Testing
 

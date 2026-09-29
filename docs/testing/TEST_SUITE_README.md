@@ -48,14 +48,16 @@ npm run test:ui
 
 ```
 tests/
-├── unit/                    27 test files (1,008 tests)
+├── unit/                    35 test files (1,134 tests)
 │   ├── Core Utilities       cache, validation, units, errors
-│   ├── Weather Domain       airQuality, fireWeather, snow, marine
-│   ├── Geospatial          distance, geohash, geography, timezone
+│   ├── Weather Domain       airQuality, fireWeather, snow, normals, precip-type, climatology
+│   ├── Geospatial          distance, geohash, gribGrid, geography, timezone
 │   ├── Security            security, security-v1.6
 │   ├── Configuration       config, tool-config
+│   ├── Locations           location-resolver, saved-locations-activities
 │   ├── Handlers            imagery-handler, lightning-handler
-│   ├── Services            ncei, rainviewer, retry-logic
+│   ├── Services            ncei, rainviewer, retry-logic, nomads-hrrr-domain, nomads-grib-loading
+│   ├── Web Server          web-config (settings, Host/Origin/token checks), web-server (real server, /mcp over an SDK client, console API)
 │   └── Version-specific    v1.6.1-fixes, bounds-checking, alert-sorting
 │
 ├── integration/             4 test files (62 tests)
@@ -318,4 +320,4 @@ describe('Feature Name', () => {
 **Quick Links:**
 - [Full Analysis Report](TEST_COVERAGE_ANALYSIS_2025.md)
 - [Recommendations & Action Plan](TEST_RECOMMENDATIONS.md)
-- [Development Guide](CLAUDE.md)
+- [Development Guide](../../CLAUDE.md)

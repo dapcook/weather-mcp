@@ -121,11 +121,11 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 
 ## Version Information
 
-- **Current Version:** 1.6.1 (Security & Quality Fixes)
-- **Security Posture:** A- (Excellent, 93/100)
-- **Test Coverage:** 1,042 tests, 100% pass rate
-- **Code Quality:** A+ (Excellent, 97.5/100)
-- **Risk Level:** LOW
+- **Current Version:** 1.7.0, plus unreleased features (see the [CHANGELOG](../CHANGELOG.md))
+- **Security Posture:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10)
+- **Tests:** 1,196 (1,134 unit, 62 integration)
+- **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
+- **Risk Level:** LOW (v1.6.0 audit)
 
 ---
 

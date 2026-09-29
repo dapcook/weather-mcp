@@ -6,7 +6,7 @@
  * here touches external weather APIs.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { request } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -163,6 +163,23 @@ describe('web server with a token', () => {
 
     const withToken = await fetch(`${server.base}/api/tools`, { headers: { Authorization: `Bearer ${TOKEN}` } });
     expect(withToken.status).toBe(200);
+  });
+
+  it('keeps query strings (coordinates, place names) out of the logs', async () => {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+    });
+    try {
+      const response = await fetch(`${server.base}/api/climate?latitude=12.3456&longitude=65.4321&q=SecretPlace`);
+      expect(response.status).toBe(401);
+    } finally {
+      spy.mockRestore();
+    }
+    const output = logged.join('\n');
+    expect(output).toContain('Rejected request without a valid token');
+    expect(output).toContain('/api/climate');
+    expect(output).not.toMatch(/12\.3456|65\.4321|SecretPlace/);
   });
 
   it('requires the token on /mcp', async () => {

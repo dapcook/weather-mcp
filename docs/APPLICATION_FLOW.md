@@ -60,7 +60,7 @@ At list-tools time, only enabled tool definitions are returned to the client.
 Every MCP tool call follows the same pipeline.
 
 1. MCP client sends a `CallTool` request.
-2. `src/index.ts` receives request in `server.setRequestHandler(CallToolRequestSchema, ...)`.
+2. `src/mcpServer.ts` receives the request in `server.setRequestHandler(CallToolRequestSchema, ...)` inside `createMcpServer()` (the same code serves stdio via `src/index.ts` and HTTP via `src/web/app.ts`).
 3. `name` and `arguments` are extracted.
 4. `switch (name)` routes to the matching tool case.
 5. The tool execution is wrapped in `withAnalytics(...)` from `src/analytics/middleware.ts`.

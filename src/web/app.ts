@@ -103,6 +103,14 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+/**
+ * Request path for logs, without the query string: queries carry coordinates
+ * (/api/climate) and place names (/api/geocode), which the project keeps out of logs.
+ */
+function pathForLog(url: string | undefined): string {
+  return (url ?? '').split('?')[0];
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -155,7 +163,7 @@ export async function startWebServer(
       throw new HttpError(403, 'Forbidden origin');
     }
     if (needsToken && !hasValidToken(req.headers.authorization, config.token)) {
-      logger.warn('Rejected request without a valid token', { path: req.url, securityEvent: true });
+      logger.warn('Rejected request without a valid token', { path: pathForLog(req.url), securityEvent: true });
       throw new HttpError(401, 'Missing or invalid access token', { 'WWW-Authenticate': 'Bearer realm="weather-mcp"' });
     }
   }
@@ -335,7 +343,7 @@ export async function startWebServer(
         return;
       }
       const err = error instanceof Error ? error : new Error(String(error));
-      logger.error('Web request failed', err, { path: req.url });
+      logger.error('Web request failed', err, { path: pathForLog(req.url) });
       sendJson(res, 500, { error: formatErrorForUser(err) });
     });
   });

@@ -36,7 +36,7 @@ src/
 │   ├── lightningHandler.ts             # Blitzortung real-time lightning
 │   └── savedLocationsHandler.ts        # Saved locations management (v1.7.0)
 ├── services/                   # External API clients
-│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges)
+│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges, USGS water services)
 │   ├── openmeteo.ts            # Open-Meteo API client (forecast, historical, air quality, marine,
 │   │                           #   climate normals, daily temperature archive for climate explorer)
 │   ├── nomads.ts               # NOMADS/NCEP model-run client (GFS, NAM, HRRR)
@@ -44,7 +44,8 @@ src/
 │   ├── nominatim.ts            # Nominatim/OSM geocoding client (v1.7.0)
 │   ├── locationStore.ts        # Saved locations storage service (v1.7.0)
 │   ├── nifc.ts                 # NIFC wildfire ArcGIS API client
-│   ├── usgs.ts                 # USGS water services client
+│   ├── geocoding.ts            # Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
+│   ├── ncei.ts                 # NOAA NCEI climate normals client (optional token)
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
 ├── web/                        # HTTP server: /mcp for AI clients + web console
@@ -89,7 +90,13 @@ src/
 │   ├── tools.ts                # Tool configuration (presets, aliases, ENABLED_TOOLS)
 │   ├── api.ts                  # Optional API tokens (NCEI)
 │   └── displayThresholds.ts    # Display logic constants
-├── analytics/                  # Optional analytics middleware
+├── analytics/                  # Optional, off by default (ANALYTICS_ENABLED)
+│   ├── index.ts, config.ts     # Entry point (withAnalytics) and env-var config
+│   ├── collector.ts            # Event collection
+│   ├── anonymizer.ts           # Anonymization (no coordinates or location names)
+│   ├── transport.ts            # HTTPS event delivery
+│   ├── middleware.ts           # Tool-call instrumentation
+│   └── types.ts
 └── errors/                     # Custom error classes
     └── ApiError.ts
 web/
@@ -296,6 +303,9 @@ tests/
 │   ├── location-resolver.test.ts       # Location resolver
 │   ├── saved-locations-activities.test.ts  # Saved locations + activity tags
 │   ├── nomads-hrrr-domain.test.ts      # HRRR CONUS bounding box
+│   ├── nomads-grib-loading.test.ts     # GRIB decoder loads lazily; clear error when unavailable (ARM)
+│   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
+│   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
 │   └── ncei.test.ts                    # NCEI service
 └── integration/                        # Integration tests (live API calls)
     ├── error-recovery.test.ts
@@ -310,6 +320,8 @@ tests/
 - **Coverage Target:** 100% on critical utilities (cache, validation, units, errors, AQI, fire weather)
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
+- **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
+- **Unit vs integration:** `tests/unit` (1,134 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -602,7 +614,7 @@ npm run build
 ```bash
 npm run build          # TypeScript compilation (0 errors)
 npm test               # All tests passing (100%)
-npm audit              # No critical vulnerabilities
+npm audit              # Review advisories; known open ones are noted under Project Status
 ```
 
 ### Code Review Checklist
@@ -623,9 +635,10 @@ npm audit              # No critical vulnerabilities
 - **Version:** 1.7.0 + Unreleased features (see CHANGELOG.md [Unreleased] section)
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
-- **Security Rating:** A- (Excellent, 93/100)
-- **Test Coverage:** 1,060+ tests, 100% pass rate
-- **Code Quality:** A+ (Excellent, 97.5/100)
+- **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
+- **Tests:** 1,196 (1,134 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
+- **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 
 ## Commit Conventions
 

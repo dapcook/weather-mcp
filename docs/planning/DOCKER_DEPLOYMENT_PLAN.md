@@ -15,7 +15,7 @@ Docker + Docker Compose, SD-card storage.
 | 2 | One server process for LLMs (`/mcp`) and the console | Done |
 | 3 | Docker packaging, tested on a Mac | Done |
 | 4 | Deploy to the Pi | Done |
-| 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Planned |
+| 5 | Optional: HTTPS/remote access, friendly name, dashboard link | In progress (Tailscale installed on the Pi; sign-in and HTTPS pending) |
 | 6 | Docs and PR | Done |
 
 Placeholders used below: `<pi-host>` (e.g. `raspberrypi.local`), `<pi-ip>` (its LAN address),
@@ -230,6 +230,19 @@ it is published for `cpu: wasm32`.
 - **Dashboard link:** add a tile to a home dashboard.
 - **Local models:** any MCP-capable chat client (e.g. one used with Ollama) can connect to
   the same `/mcp` endpoint.
+
+**Tailscale progress:**
+- Installed on the Pi from Tailscale's apt repository (Debian bookworm, signed key; version
+  1.102.4). The Pi runs Pi-hole and NetworkManager owns `resolv.conf`, so it is joined with
+  `--accept-dns=false`: Tailscale must not take over DNS for the network. Verified before and
+  after install: `resolv.conf` unchanged and Pi-hole still answering.
+- Ports 80 and 443 belong to Pi-hole, so the HTTPS address will use port **8443**.
+- Still to do (needs the account owner): sign the Pi in at the one-time link `tailscale up`
+  prints, turn on MagicDNS and **Enable HTTPS** on the tailnet's DNS page, and install
+  Tailscale on the client devices. Optionally disable key expiry for the Pi.
+- Then: add the Pi's `*.ts.net` name to `WEB_ALLOWED_HOSTS`, run
+  `tailscale serve --bg --https=8443 http://127.0.0.1:3003`, and verify the certificate and
+  the token check. Never use `tailscale funnel` (public internet).
 
 ## Phase 6: Docs and PR
 
