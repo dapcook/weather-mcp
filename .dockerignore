@@ -1,0 +1,25 @@
+# Only package.json, package-lock.json, tsconfig.json, src/ and web/ are needed
+
+# Secrets and local data
+.env
+.env.*
+data/
+**/locations.json
+
+# Build output and dependencies (rebuilt inside the image)
+node_modules/
+dist/
+
+# Not needed in the image
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+docs/
+tests/
+coverage/
+output/
+temp/
+*.log
+.DS_Store

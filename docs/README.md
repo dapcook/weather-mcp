@@ -8,6 +8,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - **[../README.md](../README.md)** - Main project README with installation and usage instructions
 - **[CLIENT_SETUP.md](./CLIENT_SETUP.md)** - Setup guides for 8 different MCP clients
 - **[WEB_CONSOLE.md](./WEB_CONSOLE.md)** - Web console guide: run every tool in a browser and use the climate explorer
+- **[DOCKER.md](./DOCKER.md)** - Run the server in Docker (Raspberry Pi friendly): setup, settings, security, troubleshooting
 
 ### 📁 Analytics (`analytics/`)
 - **[ANALYTICS_MCP_PLAN.md](./analytics/ANALYTICS_MCP_PLAN.md)** - Privacy-first analytics implementation plan
@@ -16,6 +17,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 
 ### 📁 Planning (`planning/`)
 - **[IMPLEMENTATION_PLAN.md](./planning/IMPLEMENTATION_PLAN.md)** - Project implementation roadmap
+- **[DOCKER_DEPLOYMENT_PLAN.md](./planning/DOCKER_DEPLOYMENT_PLAN.md)** - Docker/Raspberry Pi deployment design, decisions, and test results
 - **[ROADMAP.md](./planning/ROADMAP.md)** - Project roadmap and future plans
 - **[FUTURE_ENHANCEMENTS.md](./planning/FUTURE_ENHANCEMENTS.md)** - Planned enhancements and features
 
@@ -119,11 +121,11 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 
 ## Version Information
 
-- **Current Version:** 1.6.1 (Security & Quality Fixes)
-- **Security Posture:** A- (Excellent, 93/100)
-- **Test Coverage:** 1,042 tests, 100% pass rate
-- **Code Quality:** A+ (Excellent, 97.5/100)
-- **Risk Level:** LOW
+- **Current Version:** 1.7.0, plus unreleased features (see the [CHANGELOG](../CHANGELOG.md))
+- **Security Posture:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10)
+- **Tests:** 1,196 (1,134 unit, 62 integration)
+- **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
+- **Risk Level:** LOW (v1.6.0 audit)
 
 ---
 

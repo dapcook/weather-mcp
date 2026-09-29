@@ -17,7 +17,8 @@ This document provides context and guidelines for AI assistants (Codex, etc.) wo
 
 ```
 src/
-├── index.ts                    # MCP server entry point, tool registry
+├── index.ts                    # stdio entry point (node dist/index.js)
+├── mcpServer.ts                # Tool registry + handlers: createServices(), createMcpServer(); no side effects on import
 ├── handlers/                   # Tool request handlers (one per MCP tool)
 │   ├── forecastHandler.ts
 │   ├── nomadsForecastHandler.ts        # Raw NOMADS/GFS model-run forecast
@@ -35,7 +36,7 @@ src/
 │   ├── lightningHandler.ts             # Blitzortung real-time lightning
 │   └── savedLocationsHandler.ts        # Saved locations management (v1.7.0)
 ├── services/                   # External API clients
-│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges)
+│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges, USGS water services)
 │   ├── openmeteo.ts            # Open-Meteo API client (forecast, historical, air quality, marine,
 │   │                           #   climate normals, daily temperature archive for climate explorer)
 │   ├── nomads.ts               # NOMADS/NCEP model-run client (GFS, NAM, HRRR)
@@ -43,12 +44,16 @@ src/
 │   ├── nominatim.ts            # Nominatim/OSM geocoding client (v1.7.0)
 │   ├── locationStore.ts        # Saved locations storage service (v1.7.0)
 │   ├── nifc.ts                 # NIFC wildfire ArcGIS API client
-│   ├── usgs.ts                 # USGS water services client
+│   ├── geocoding.ts            # Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
+│   ├── ncei.ts                 # NOAA NCEI climate normals client (optional token)
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
-├── web/                        # Web console (browser UI + HTTP API)
-│   └── server.ts               # Node http server; drives real MCP server over stdio;
-│                               #   serves /api/climate for the climate explorer
+├── web/                        # HTTP server: /mcp for AI clients + web console
+│   ├── server.ts               # Entry point (npm run web)
+│   ├── app.ts                  # Routes: /mcp, /, /api/*, /health; /api/climate for the climate explorer
+│   ├── config.ts               # WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN parsing
+│   ├── access.ts               # Host (DNS rebinding), Origin (CSRF), bearer token checks
+│   └── envDefaults.ts          # ENABLED_TOOLS=all default, imported before config/tools
 ├── types/                      # TypeScript type definitions
 │   ├── noaa.ts
 │   ├── openmeteo.ts
@@ -85,7 +90,13 @@ src/
 │   ├── tools.ts                # Tool configuration (presets, aliases, ENABLED_TOOLS)
 │   ├── api.ts                  # Optional API tokens (NCEI)
 │   └── displayThresholds.ts    # Display logic constants
-├── analytics/                  # Optional analytics middleware
+├── analytics/                  # Optional, off by default (ANALYTICS_ENABLED)
+│   ├── index.ts, config.ts     # Entry point (withAnalytics) and env-var config
+│   ├── collector.ts            # Event collection
+│   ├── anonymizer.ts           # Anonymization (no coordinates or location names)
+│   ├── transport.ts            # HTTPS event delivery
+│   ├── middleware.ts           # Tool-call instrumentation
+│   └── types.ts
 └── errors/                     # Custom error classes
     └── ApiError.ts
 web/
@@ -102,8 +113,8 @@ tests/
 3. **Validation First:** All user inputs validated before processing (see `src/utils/validation.ts`)
 4. **Caching Strategy:** LRU cache with TTL based on data volatility (see `src/config/cache.ts`)
 5. **Error Hierarchy:** Custom error classes for different failure scenarios (`src/errors/ApiError.ts`)
-6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/index.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
-7. **Web Console Pattern:** `src/web/server.ts` spawns `dist/index.js` as a child process and communicates via MCP stdio — the browser UI talks to the **real** MCP server, not a mock
+6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/mcpServer.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
+7. **One Server, Several Transports:** `src/mcpServer.ts` builds MCP servers from shared services. `src/index.ts` serves one over stdio; `src/web/app.ts` serves `/mcp` over Streamable HTTP and gives the console an in-process MCP client (in-memory transport), so the browser UI exercises the **real** MCP code path, not a mock
 
 ## Key Features (18 MCP Tools)
 
@@ -136,12 +147,13 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 
 ### Architecture
 
-`src/web/server.ts` is a plain Node `http` server (no framework) that:
-1. Starts `dist/index.js` as a child process and connects to it with the MCP SDK `Client` over `StdioClientTransport`, reconnecting on the next request if it exits
-2. `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
+`src/web/app.ts` is a plain Node `http` server (no framework), started by `src/web/server.ts`. One process, one set of services (caches, `LocationStore`) shared by AI clients and the console:
+1. `POST /mcp` is a stateless Streamable HTTP MCP endpoint (a fresh `createMcpServer()` + transport per request; `GET`/`DELETE` return 405)
+2. The console uses an in-process MCP `Client` connected over `InMemoryTransport`: `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
 3. `GET /api/saved-locations` and `GET /api/geocode?q=` read `LocationStore` / call Nominatim directly for the location helper
 4. `GET /api/climate` serves the climate explorer (see below)
-5. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
+5. `GET /health` returns `{status, version, uptimeSeconds}` (for Docker health checks)
+6. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
 
 `web/index.html` is a self-contained single page (vanilla JS, no build step, ~87 KB):
 - Builds forms dynamically from each tool's JSON schema; remembers each tool's last inputs in localStorage
@@ -149,7 +161,7 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 - **Radar view:** RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–7); pin at the location
 - **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
 
-Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` (CSRF); JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
+Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Origin` (CSRF) against loopback names plus `WEB_ALLOWED_HOSTS`; optional bearer token on `/mcp` and `/api/*`; JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
 
 ### Climate Explorer
 
@@ -181,9 +193,21 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 - Percentile ranks are interpolated in the page from the server's 21 quantiles (`percentileRank` in the page mirrors the one in `climatology.ts`)
 - Only the chart and tiles redraw on view changes (not the full card)
 
-### Environment Variables (web console)
+### Environment Variables (web server)
+- `WEB_HOST` — address to listen on (default `127.0.0.1`; `0.0.0.0` in a container)
 - `WEB_PORT` — HTTP port (default `8787`)
+- `WEB_ALLOWED_HOSTS` — extra hostnames/IPs clients may use, comma-separated (loopback names always allowed)
+- `WEATHER_MCP_TOKEN` — if set (16+ chars), `/mcp` and `/api/*` require `Authorization: Bearer <token>`; the console shows a sign-in box
+- `WEATHER_MCP_DATA_DIR` — folder for `locations.json` (default `~/.weather-mcp`; also honored by the stdio entry)
 - `ENABLED_TOOLS` — which MCP tools to expose (defaults to `all` in web mode)
+
+### Docker
+
+`Dockerfile` + `docker-compose.yml` run the web server (`/mcp` + console) in one container on port 3003, with saved locations on a `./data` volume and settings from `.env` (see `.env.example`). User guide (setup, settings, security, troubleshooting): `docs/DOCKER.md`; remote client configs: `docs/CLIENT_SETUP.md`; design and test results: `docs/planning/DOCKER_DEPLOYMENT_PLAN.md`. Keep `docs/DOCKER.md` in sync when the Dockerfile, compose file, or settings change.
+- Base is `node:22-bookworm-slim` (glibc; the GRIB decoder has no musl/Alpine builds)
+- The `deps` stage installs `@mattnucc/gribberish-wasm32-wasi` only when the native decoder won't load (e.g. `linux/arm64`); keep its version pinned to `@mattnucc/gribberish`
+- The container is hardened (non-root `node` user, read-only root filesystem, `cap_drop: ALL`); anything that writes files must use `WEATHER_MCP_DATA_DIR` (`/app/data`) or `/tmp`
+- stdio access: `docker exec -i weather-mcp node dist/index.js`
 
 ## Development Guidelines
 
@@ -201,8 +225,8 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 2. **Validation:** Add validators to `src/utils/validation.ts`
 3. **Handler:** Create handler in `src/handlers/` following existing patterns
 4. **Service (if needed):** Add API methods to the relevant service in `src/services/`
-5. **Tool Registration:** Register in `src/index.ts` (both `ListToolsRequestSchema` and `CallToolRequestSchema`)
-6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/index.ts` or call `resolveLocation()` in the handler
+5. **Tool Registration:** Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` and the `CallToolRequestSchema` switch in `createMcpServer()`)
+6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts` or call `resolveLocation()` in the handler
 7. **Tests:** Write comprehensive unit + integration tests
 8. **Documentation:** Update `README.md`, `CHANGELOG.md`, and this file
 
@@ -279,6 +303,9 @@ tests/
 │   ├── location-resolver.test.ts       # Location resolver
 │   ├── saved-locations-activities.test.ts  # Saved locations + activity tags
 │   ├── nomads-hrrr-domain.test.ts      # HRRR CONUS bounding box
+│   ├── nomads-grib-loading.test.ts     # GRIB decoder loads lazily; clear error when unavailable (ARM)
+│   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
+│   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
 │   └── ncei.test.ts                    # NCEI service
 └── integration/                        # Integration tests (live API calls)
     ├── error-recovery.test.ts
@@ -293,6 +320,8 @@ tests/
 - **Coverage Target:** 100% on critical utilities (cache, validation, units, errors, AQI, fire weather)
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
+- **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
+- **Unit vs integration:** `tests/unit` (1,134 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -361,8 +390,9 @@ Defense-in-depth: array processing is capped to prevent resource exhaustion:
 
 ### Web Console Security
 
-- Server binds to `127.0.0.1` only (no external exposure)
-- `Origin` and `Host` header validation blocks cross-site requests from pages you visit elsewhere
+- Server binds to `127.0.0.1` by default; set `WEB_HOST=0.0.0.0` (e.g. in a container) only together with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` (the server warns if a non-loopback bind has no token)
+- `Host` validation (DNS rebinding) and `Origin` validation (CSRF) accept only loopback names and `WEB_ALLOWED_HOSTS`
+- Optional bearer token on `/mcp` and `/api/*`, compared in constant time; `/` and `/health` stay open (no data)
 - Request bodies must be `application/json` and are capped at 64 KB; only tools the MCP server lists can be called
 - All tool calls pass through the same input validation as the MCP server; `/api/climate` validates coordinates and the baseline itself
 - The page's CSP allows only inline scripts/styles and same-origin requests
@@ -398,8 +428,12 @@ NCEI_API_TOKEN=                  # Free NOAA NCEI token for official US climate 
 # Lightning
 BLITZORTUNG_MQTT_URL=            # Override MQTT broker URL (default: public Blitzortung broker)
 
-# Web Console
-WEB_PORT=8787                    # Web console port (default: 8787)
+# Web server (npm run web: /mcp endpoint + console)
+WEB_HOST=127.0.0.1               # Listen address (0.0.0.0 in a container)
+WEB_PORT=8787                    # Port (default: 8787)
+WEB_ALLOWED_HOSTS=               # Extra hostnames/IPs, e.g. raspberrypi.local,192.168.1.20
+WEATHER_MCP_TOKEN=               # Bearer token for /mcp and /api/* (openssl rand -hex 32)
+WEATHER_MCP_DATA_DIR=            # Saved-locations folder (default: ~/.weather-mcp)
 ```
 
 ### Tool Presets
@@ -455,7 +489,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 
 ### Adding `location_name` Support to a New Tool
 
-For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/index.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
+For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
 
 ```typescript
 import { resolveLocation } from '../utils/locationResolver.js';
@@ -536,7 +570,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 1. Create handler: `src/handlers/newFeatureHandler.ts`
 2. Define types: `src/types/`
 3. Add service method if needed: `src/services/`
-4. Register in `src/index.ts` (ListTools + CallTool handlers)
+4. Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` + the CallTool switch in `createMcpServer()`)
 5. Add `location_name` support: either add to `SAVED_LOCATION_TOOLS` or call `resolveLocation()` in handler
 6. Write tests: `tests/unit/` and `tests/integration/`
 7. Update `README.md`, `CHANGELOG.md`, and this file
@@ -552,7 +586,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 
 ### Adding a Climate Explorer Data Source
 
-The `/api/climate` endpoint in `src/web/server.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
+The `/api/climate` endpoint in `src/web/app.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
 
 ### Debugging
 
@@ -580,7 +614,7 @@ npm run build
 ```bash
 npm run build          # TypeScript compilation (0 errors)
 npm test               # All tests passing (100%)
-npm audit              # No critical vulnerabilities
+npm audit              # Review advisories; known open ones are noted under Project Status
 ```
 
 ### Code Review Checklist
@@ -601,9 +635,10 @@ npm audit              # No critical vulnerabilities
 - **Version:** 1.7.0 + Unreleased features (see CHANGELOG.md [Unreleased] section)
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
-- **Security Rating:** A- (Excellent, 93/100)
-- **Test Coverage:** 1,060+ tests, 100% pass rate
-- **Code Quality:** A+ (Excellent, 97.5/100)
+- **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
+- **Tests:** 1,196 (1,134 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
+- **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 
 ## Commit Conventions
 
@@ -655,6 +690,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
   - `README.md` — User-facing documentation
   - `CHANGELOG.md` — Version history
   - `docs/WEB_CONSOLE.md` — Web console and climate explorer user guide
+  - `docs/DOCKER.md` — Running in Docker / on a Raspberry Pi
   - `docs/development/CODE_REVIEW.md` — Code quality assessment
   - `docs/development/SECURITY_AUDIT_V1.6.md` — Security analysis
 
