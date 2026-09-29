@@ -464,6 +464,23 @@ You can also find coordinates manually:
 | Berlin, Germany | 52.5200 | 13.4050 |
 | Dubai, UAE | 25.2048 | 55.2708 |
 
+## Web Console (use the tools without an LLM)
+
+A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result.
+
+```bash
+npm run web
+```
+
+Then open http://127.0.0.1:8787.
+
+- **Uses the real MCP server.** The console starts `dist/index.js` as a child process and talks to it over MCP stdio, exactly like an AI client does, so results match what an LLM would see.
+- **Forms come from the tool schemas**, so new tools and parameters appear automatically.
+- **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
+- **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
+- **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
+- **Local only:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations.
+
 ## Available Tools
 
 ### 1. get_forecast (ENHANCED in v0.4.0, v1.2.0)

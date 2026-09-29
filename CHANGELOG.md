@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Requests outside a CONUS bounding box are rejected with a clear error (use GFS or NAM instead)
   - HRRR values beyond its ~48h deterministic horizon are marked N/A
   - Not part of the default model set since it's CONUS-only; pass `models: ["hrrr", ...]` to opt in
+- **Web Console** - `npm run web` serves a local page (http://127.0.0.1:8787) for running every MCP tool without an LLM. It drives the real MCP server over stdio, builds forms from each tool's input schema, and adds saved-location, place-search, and browser-location helpers. Radar results are drawn on an Esri basemap with highways, labels, and a location pin, with pan and zoom. Loopback-only, with Host/Origin checks against DNS rebinding and CSRF
 - **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
 
 ### Fixed
