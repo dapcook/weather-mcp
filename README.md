@@ -49,6 +49,7 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Snow depth on ground (current conditions, US only)
   - Snowfall accumulation forecasts with time periods
   - Ice accumulation forecasts for freezing rain events
+  - Precipitation type per forecast period (rain, snow, sleet, freezing rain, ...) with a wintry-mix note and icing warning (NEW - Unreleased)
   - Smart threshold-based display (filters trace amounts)
   - Unit conversions from metric to imperial
 - **Timezone-Aware Display**: All timestamps in local time (NEW in v1.2.0)
@@ -510,6 +511,7 @@ Automatically selects the best data source: NOAA for US locations (more detailed
 - Temperature (high/low, feels like)
 - Sunrise and sunset times with daylight duration (NEW in v0.4.0)
 - Precipitation chances and amounts
+- Precipitation type when precipitation is expected: rain, drizzle, snow, sleet, freezing rain, freezing drizzle, or hail, with an icing warning for freezing rain, freezing drizzle, and sleet (NOAA and Open-Meteo sources)
 - Wind speed, direction, and gusts
 - Weather conditions and descriptions
 - UV index (for international locations)
