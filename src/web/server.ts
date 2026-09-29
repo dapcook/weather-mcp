@@ -21,6 +21,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { LocationStore } from '../services/locationStore.js';
 import { NominatimService } from '../services/nominatim.js';
+import { OpenMeteoService } from '../services/openmeteo.js';
+import { computeClimatology, packSeries, parseBaseline } from '../utils/climatology.js';
+import { validateLatitude, validateLongitude } from '../utils/validation.js';
 import { formatErrorForUser } from '../errors/ApiError.js';
 import { logger } from '../utils/logger.js';
 
@@ -30,6 +33,9 @@ const MAX_BODY_BYTES = 64 * 1024;
 // NOMADS model comparisons download several GRIB files and can take a while
 const TOOL_CALL_TIMEOUT_MS = 180_000;
 const GEOCODE_RESULT_LIMIT = 6;
+// Open-Meteo's archive (ERA5) starts in 1940
+const CLIMATE_RECORD_START = '1940-01-01';
+const DEFAULT_BASELINE = '1991-2020';
 
 const moduleDir = dirname(fileURLToPath(import.meta.url)); // dist/web
 const MCP_SERVER_ENTRY = join(moduleDir, '..', 'index.js'); // dist/index.js
@@ -162,6 +168,67 @@ async function geocode(query: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Climate explorer: the full daily record for a point plus its climatology
+// ---------------------------------------------------------------------------
+
+let openMeteoService: OpenMeteoService | null = null;
+
+function parseCoordinate(value: string | null, name: string, validate: (v: unknown) => void): number {
+  const number = value === null || value.trim() === '' ? NaN : Number(value);
+  if (!Number.isFinite(number)) {
+    throw new HttpError(400, `${name} must be a number`);
+  }
+  try {
+    validate(number);
+  } catch (error) {
+    throw new HttpError(400, `Invalid ${name}: ${(error as Error).message.replace(/^Invalid \w+: /, '')}`);
+  }
+  // ~1 km; the reanalysis grid is ~25 km, so nearby clicks can share a cache entry
+  return Math.round(number * 100) / 100;
+}
+
+async function getClimate(params: URLSearchParams) {
+  const latitude = parseCoordinate(params.get('latitude'), 'latitude', validateLatitude);
+  const longitude = parseCoordinate(params.get('longitude'), 'longitude', validateLongitude);
+
+  // Two days back in UTC is a complete local day in every timezone
+  const endDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const lastFullYear = Number(endDate.slice(0, 4)) - 1;
+  const baselineParam = params.get('baseline') ?? DEFAULT_BASELINE;
+  const baseline = parseBaseline(baselineParam, Number(CLIMATE_RECORD_START.slice(0, 4)), lastFullYear);
+  if (!baseline) {
+    throw new HttpError(400, `Invalid baseline "${baselineParam}": use YYYY-YYYY, at least 10 years, 1940-${lastFullYear}`);
+  }
+
+  openMeteoService ??= new OpenMeteoService();
+  const record = await openMeteoService.getDailyTemperatureRecord(latitude, longitude, CLIMATE_RECORD_START, endDate);
+  const daily = record.daily!; // validated by the service
+  const input = {
+    time: daily.time,
+    high: daily.temperature_2m_max ?? [],
+    low: daily.temperature_2m_min ?? [],
+    precipitation: daily.precipitation_sum ?? [],
+  };
+
+  return {
+    location: {
+      latitude: record.latitude,
+      longitude: record.longitude,
+      elevation: record.elevation,
+      timezone: record.timezone,
+    },
+    units: { temperature: '°F', precipitation: 'in' },
+    source: 'Open-Meteo Historical Weather API (ERA5 reanalysis)',
+    start: daily.time[0],
+    end: daily.time[daily.time.length - 1],
+    high: packSeries(input.high),
+    low: packSeries(input.low),
+    precipitation: packSeries(input.precipitation, 2),
+    climatology: computeClimatology(input, baseline),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // HTTP plumbing
 // ---------------------------------------------------------------------------
 
@@ -274,6 +341,11 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method === 'GET' && url.pathname === '/api/geocode') {
     const query = (url.searchParams.get('q') ?? '').trim();
     sendJson(res, 200, { results: await geocode(query) });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/climate') {
+    sendJson(res, 200, await getClimate(url.searchParams));
     return;
   }
 

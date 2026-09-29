@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - HRRR values beyond its ~48h deterministic horizon are marked N/A
   - Not part of the default model set since it's CONUS-only; pass `models: ["hrrr", ...]` to opt in
 - **Web Console** - `npm run web` serves a local page (http://127.0.0.1:8787) for running every MCP tool without an LLM. It drives the real MCP server over stdio, builds forms from each tool's input schema, and adds saved-location, place-search, and browser-location helpers. Radar results are drawn on an Esri basemap with highways, labels, and a location pin, with pan and zoom. Loopback-only, with Host/Origin checks against DNS rebinding and CSRF
+- **Climate Explorer in the Web Console** - WeatherSpark-style daily high/low chart for any year since 1940 at any location, over per-calendar-day percentile bands (25th–75th, 10th–90th) and average lines, with a selectable normals baseline (1991–2020 default). Hover tooltips give each day's percentile rank, normal range and records; drag to zoom, month/year stepping, last-12-months view, °F/°C, optional record lines and precipitation strip, and a summary of the visible range. Backed by a new `/api/climate` endpoint that fetches the full daily record once (`OpenMeteoService.getDailyTemperatureRecord`) and computes the climatology in `src/utils/climatology.ts`
 - **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
 
 ### Fixed

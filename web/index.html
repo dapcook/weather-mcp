@@ -301,6 +301,81 @@
   .radar-map .map-label { top: 10px; left: 10px; font-weight: 600; }
   .radar-map .attribution { bottom: 6px; right: 6px; color: var(--muted); }
   .radar-map .attribution a { color: inherit; }
+  /* ---------- climate explorer ---------- */
+  :root {
+    --hi: #cf3b30; --lo: #3656c9; --bar: #7d858f; --precip: #2f86d6; --freeze: #9aa3ad; --sel: #1f6feb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --hi: #ff7b72; --lo: #7ea6ff; --bar: #9aa3ad; --precip: #58a6ff; --freeze: #5d6673; --sel: #4c8dff; }
+  }
+  .cx-form { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 16px; align-items: end; }
+  .cx-form .field label.name { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .cx-place { margin-top: 2px; color: var(--muted); font-size: 13px; }
+  .cx-place strong { color: var(--text); font-size: 15px; }
+  .cx-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 10px; }
+  .cx-toolbar .grow { flex: 1; }
+  .cx-year { display: inline-flex; align-items: center; gap: 4px; }
+  .cx-year select { width: auto; font-weight: 650; font-size: 15px; padding: 4px 8px; }
+  .cx-arrow { width: 32px; height: 32px; padding: 0; justify-content: center; font-size: 18px; line-height: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
+  .seg button { border: 0; background: var(--panel); padding: 4px 9px; cursor: pointer; font-size: 12.5px; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button:hover { background: var(--panel-2); }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .cx-chart { position: relative; outline: none; user-select: none; touch-action: pan-y; }
+  .cx-chart:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 6px; }
+  .cx-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .cx-chart text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+  .cx-chart .grid { stroke: var(--border); stroke-width: 1; }
+  .cx-chart .freeze { stroke: var(--freeze); stroke-width: 1; stroke-dasharray: 4 3; }
+  .cx-chart .band-hi { fill: var(--hi); }
+  .cx-chart .band-lo { fill: var(--lo); }
+  .cx-chart .band.outer { fill-opacity: .12; }
+  .cx-chart .band.inner { fill-opacity: .17; }
+  .cx-chart .mean { fill: none; stroke-width: 1.5; stroke-opacity: .55; }
+  .cx-chart .mean.hi { stroke: var(--hi); }
+  .cx-chart .mean.lo { stroke: var(--lo); }
+  .cx-chart .record { fill: none; stroke-width: 1; stroke-dasharray: 2 3; stroke-opacity: .7; }
+  .cx-chart .record.hi { stroke: var(--hi); }
+  .cx-chart .record.lo { stroke: var(--lo); }
+  .cx-chart .day { fill: var(--bar); fill-opacity: .55; }
+  .cx-chart .tick-hi { stroke: var(--hi); stroke-width: 2; }
+  .cx-chart .tick-lo { stroke: var(--lo); stroke-width: 2; }
+  .cx-chart .set-hi { fill: var(--panel); stroke: var(--hi); stroke-width: 1.5; }
+  .cx-chart .set-lo { fill: var(--panel); stroke: var(--lo); stroke-width: 1.5; }
+  .cx-chart .precip { fill: var(--precip); fill-opacity: .8; }
+  .cx-chart .axis-title { font-weight: 600; }
+  .cx-chart .cross { stroke: var(--text); stroke-opacity: .45; stroke-width: 1; }
+  .cx-chart .cross-day { fill: var(--text); fill-opacity: .07; }
+  .cx-chart .level { stroke: var(--text); stroke-opacity: .5; stroke-width: 1; stroke-dasharray: 4 3; }
+  .cx-chart .level-tag rect { fill: var(--text); }
+  .cx-chart .level-tag text { fill: var(--panel); font-weight: 650; }
+  .cx-chart .brush { fill: var(--sel); fill-opacity: .12; stroke: var(--sel); stroke-opacity: .6; }
+  .cx-chart .hit { fill: transparent; cursor: crosshair; }
+  .cx-tip {
+    position: absolute; z-index: 3; pointer-events: none;
+    min-width: 220px; max-width: 290px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: 9px 11px; font-size: 12.5px; line-height: 1.45;
+  }
+  .cx-tip .d { font-weight: 650; margin-bottom: 4px; }
+  .cx-tip .row { display: flex; gap: 8px; align-items: baseline; }
+  .cx-tip .row b { min-width: 34px; }
+  .cx-tip .hi b { color: var(--hi); }
+  .cx-tip .lo b { color: var(--lo); }
+  .cx-tip .m { color: var(--muted); font-size: 11.5px; }
+  .cx-tip .flag { color: var(--accent); font-weight: 600; }
+  .cx-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .cx-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .cx-legend span[hidden] { display: none; }
+  .cx-legend i { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+  .cx-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; margin-top: 14px; }
+  .cx-stat { background: var(--panel-2); border-radius: 8px; padding: 9px 11px; }
+  .cx-stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  .cx-stat .v { font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+  .cx-stat .s { font-size: 12px; color: var(--muted); }
+  .cx-stat .v.hi { color: var(--hi); }
+  .cx-stat .v.lo { color: var(--lo); }
   .error-box { background: var(--err-soft); color: var(--err); padding: 10px 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; }
 </style>
 </head>
@@ -413,6 +488,7 @@
   // ---------------------------------------------------------------------
   let tools = [];
   let current = null;
+  let currentView = null; // 'climate' when a non-tool view is showing
   let savedLocations = [];
   let lastMarkdown = '';
   let lastArgs = {};
@@ -434,6 +510,15 @@
     });
     const others = tools.filter((t) => !placed.has(t.name));
     if (others.length) groups.push(['Other', others]);
+
+    if (!needle || 'climate explorer history normals'.includes(needle)) {
+      list.append(el('div', { class: 'group-label', text: 'Explorers' }));
+      list.append(el('button', {
+        class: 'tool-btn', type: 'button',
+        'aria-current': currentView === 'climate' ? 'true' : 'false',
+        onclick: () => showClimateExplorer(),
+      }, 'Climate explorer', el('span', { class: 'tool-id', text: 'highs & lows since 1940' })));
+    }
 
     for (const [label, members] of groups) {
       const visible = members.filter((t) => !needle ||
@@ -587,7 +672,7 @@
     if (input) input.value = value;
   }
 
-  function buildLocationHelper(props) {
+  function buildLocationHelper(props, onPick) {
     const supportsName = 'location_name' in props;
     const savedSelect = el('select', { 'aria-label': 'Saved location' },
       el('option', { value: '', text: savedLocations.length ? 'Choose…' : 'None saved yet' }),
@@ -596,6 +681,7 @@
     savedSelect.addEventListener('change', () => {
       const loc = savedLocations.find((l) => l.alias === savedSelect.value);
       if (!loc) return;
+      if (onPick) onPick({ label: loc.name && loc.name !== loc.alias ? `${loc.alias} — ${loc.name}` : loc.alias, latitude: loc.latitude, longitude: loc.longitude });
       if (supportsName) {
         setFieldValue('location_name', loc.alias);
         setFieldValue('latitude', '');
@@ -630,6 +716,7 @@
               savedSelect.value = '';
               query.value = r.name + (where ? `, ${where}` : '');
               results.hidden = true;
+              if (onPick) onPick({ label: query.value, latitude: r.latitude, longitude: r.longitude });
             },
           }, r.name, el('small', { text: `${where}${where ? ' · ' : ''}${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}` })));
         }
@@ -658,6 +745,7 @@
         if (supportsName) setFieldValue('location_name', '');
         savedSelect.value = '';
         geoBtn.disabled = false;
+        if (onPick) onPick({ label: 'My location', latitude: pos.coords.latitude, longitude: pos.coords.longitude });
       }, (err) => {
         geoBtn.disabled = false;
         alert(`Couldn't get your location: ${err.message}`);
@@ -674,6 +762,7 @@
     const switching = !current || current.name !== name;
     current = tools.find((t) => t.name === name);
     if (!current) return;
+    currentView = null;
     if (switching) {
       // A previous tool's output under a different form is confusing
       $('#result-card').hidden = true;
@@ -1024,6 +1113,697 @@
   }
 
   // ---------------------------------------------------------------------
+  // Climate explorer: WeatherSpark-style daily highs and lows for any year
+  // since 1940, drawn over percentile bands for the calendar day
+  // ---------------------------------------------------------------------
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const MONTH_STARTS = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]; // leap-year calendar
+  const DAY_MS = 86400000;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  // Indexes into the 21 quantiles (0, 5, ... 100th percentile) sent by the server
+  const Q10 = 2, Q25 = 5, Q75 = 15, Q90 = 18;
+
+  const cx = {
+    data: null,       // /api/climate payload
+    iso: [],          // ISO date per index (through Dec 31 of the last year)
+    dataLen: 0,       // days that have data; later indexes are padding
+    slot: [],         // leap-calendar day (0-365) per index
+    place: null,      // { label, latitude, longitude }
+    unit: store.get('weather-console:climate:unit') === 'C' ? 'C' : 'F',
+    showRecords: store.get('weather-console:climate:records') === true,
+    showPrecip: store.get('weather-console:climate:precip') !== false,
+    mode: { year: null, month: null }, // month: 0-11 or null for the whole year
+    range: null,      // [start, end) indexes when zoomed to a custom range
+    hover: null,
+    pointerY: null,   // pointer height in SVG units while the mouse is over the chart
+    ui: null,         // controls of the rendered card, for in-place updates
+    loading: false,
+    requestId: 0,
+  };
+
+  const ordinal = (n) => {
+    const v = Math.round(n);
+    const s = ['th', 'st', 'nd', 'rd'];
+    const m = v % 100;
+    return v + (s[(m - 20) % 10] || s[m] || s[0]);
+  };
+  const toUnit = (f) => (cx.unit === 'F' ? f : (f - 32) * 5 / 9);
+  const fmtT = (f) => (f === null || f === undefined ? '—' : `${Math.round(toUnit(f))}°${cx.unit}`);
+  const fmtDelta = (df) => {
+    const v = cx.unit === 'F' ? df : df * 5 / 9;
+    return `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}°${cx.unit}`;
+  };
+  const fmtP = (inches, digits = 2) => (inches === null || inches === undefined ? '—'
+    : cx.unit === 'F' ? `${inches.toFixed(digits)} in` : `${(inches * 25.4).toFixed(digits === 2 ? 1 : 0)} mm`);
+  const isoToUtc = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+  const fmtDate = (iso, opts = { month: 'short', day: 'numeric', year: 'numeric' }) =>
+    new Date(isoToUtc(iso)).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
+
+  function percentileRank(value, q) {
+    const last = q.length - 1;
+    if (value <= q[0]) return 0;
+    if (value >= q[last]) return 100;
+    for (let i = 1; i <= last; i++) {
+      if (value <= q[i]) {
+        const span = q[i] - q[i - 1];
+        return ((i - 1 + (span > 0 ? (value - q[i - 1]) / span : 0.5)) / last) * 100;
+      }
+    }
+    return 100;
+  }
+
+  function rankText(rank) {
+    if (rank >= 100) return 'above every baseline year';
+    if (rank <= 0) return 'below every baseline year';
+    return `${ordinal(Math.min(99, Math.max(1, rank)))} percentile`;
+  }
+
+  // ----- data -----
+  function indexData(data) {
+    const start = isoToUtc(data.start);
+    // Pad the last year out to Dec 31 so its view shows the normals for the rest of the year
+    cx.dataLen = data.high.length;
+    const total = Math.round((Date.UTC(Number(data.end.slice(0, 4)), 11, 31) - start) / DAY_MS) + 1;
+    for (const key of ['high', 'low', 'precipitation']) {
+      while (data[key].length < total) data[key].push(null);
+    }
+    cx.iso = new Array(total);
+    cx.slot = new Array(total);
+    for (let i = 0; i < total; i++) {
+      const d = new Date(start + i * DAY_MS);
+      cx.iso[i] = d.toISOString().slice(0, 10);
+      cx.slot[i] = MONTH_STARTS[d.getUTCMonth()] + d.getUTCDate() - 1;
+    }
+  }
+  const indexOf = (iso) => Math.round((isoToUtc(iso) - isoToUtc(cx.data.start)) / DAY_MS);
+  const firstYear = () => Number(cx.data.start.slice(0, 4));
+  const lastYear = () => Number(cx.data.end.slice(0, 4));
+
+  function viewRange() {
+    const n = cx.iso.length;
+    if (cx.range) return cx.range;
+    const { year, month } = cx.mode;
+    const pad = (v) => String(v).padStart(2, '0');
+    let a, b;
+    if (month === null) {
+      a = indexOf(`${year}-01-01`);
+      b = indexOf(`${year + 1}-01-01`);
+    } else {
+      a = indexOf(`${year}-${pad(month + 1)}-01`);
+      b = month === 11 ? indexOf(`${year + 1}-01-01`) : indexOf(`${year}-${pad(month + 2)}-01`);
+    }
+    return [Math.max(0, a), Math.min(n, b)];
+  }
+
+  async function loadClimate() {
+    const lat = Number($('#cx-lat').value);
+    const lon = Number($('#cx-lon').value);
+    const baseline = $('#cx-baseline').value;
+    const status = $('#cx-status');
+    if (!$('#cx-lat').value.trim() || !$('#cx-lon').value.trim() || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      status.replaceChildren(el('div', { class: 'error-box', text: 'Pick a place, or enter a latitude and longitude.' }));
+      return;
+    }
+    store.set('weather-console:climate:args', { latitude: lat, longitude: lon, baseline, place: cx.place });
+    const id = ++cx.requestId;
+    const btn = $('#cx-load');
+    btn.disabled = true;
+    btn.replaceChildren(el('span', { class: 'spinner' }), el('span', { text: 'Loading…' }));
+    status.replaceChildren(el('div', { class: 'placeholder' }, 'Downloading every day since 1940 and computing percentiles…'));
+    try {
+      const data = await api(`/api/climate?latitude=${lat}&longitude=${lon}&baseline=${encodeURIComponent(baseline)}`);
+      if (id !== cx.requestId) return; // a newer request superseded this one
+      const keepView = cx.data !== null;
+      cx.data = data;
+      indexData(data);
+      if (!keepView || cx.mode.year === null) cx.mode = { year: lastYear(), month: null };
+      cx.mode.year = Math.min(Math.max(cx.mode.year, firstYear()), lastYear());
+      cx.range = null;
+      cx.hover = null;
+      status.replaceChildren();
+      renderClimate();
+    } catch (error) {
+      if (id !== cx.requestId) return;
+      status.replaceChildren(el('div', { class: 'error-box', text: error.message }));
+    } finally {
+      if (id === cx.requestId) {
+        btn.disabled = false;
+        btn.replaceChildren(el('span', { text: 'Load' }));
+      }
+    }
+  }
+
+  // ----- view -----
+  function showClimateExplorer() {
+    current = null;
+    currentView = 'climate';
+    $('#result-card').hidden = true;
+    store.set('weather-console:last-tool', 'climate');
+    try { history.replaceState(null, '', '#climate'); } catch { /* ignore */ }
+    renderToolList($('#tool-filter').value);
+    window.scrollTo({ top: 0 });
+
+    const saved = store.get('weather-console:climate:args') || {};
+    if (saved.place) cx.place = saved.place;
+    const lastFull = new Date(Date.now() - 2 * DAY_MS).getUTCFullYear() - 1;
+    const baselines = [
+      ['1991-2020', '1991–2020 (current normals)'],
+      ['1961-1990', '1961–1990'],
+      ['1951-1980', '1951–1980'],
+      [`1940-${lastFull}`, `1940–${lastFull} (all years)`],
+    ];
+    const baselineSelect = el('select', { id: 'cx-baseline' }, baselines.map(([v, t]) => el('option', { value: v, text: t })));
+    if (saved.baseline && baselines.some(([v]) => v === saved.baseline)) baselineSelect.value = saved.baseline;
+    baselineSelect.addEventListener('change', () => { if (cx.data) loadClimate(); });
+
+    const numField = (key, label, value) => {
+      const input = el('input', { id: `cx-${key.slice(0, 3)}`, name: key, type: 'number', step: 'any' });
+      if (value !== undefined) input.value = value;
+      input.addEventListener('input', () => { cx.place = null; });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadClimate(); });
+      return el('div', { class: 'field', 'data-key': key, 'data-kind': 'number' },
+        el('label', { class: 'name', for: input.id, text: label }), input);
+    };
+
+    const helper = buildLocationHelper({ latitude: {}, longitude: {} }, (pick) => {
+      cx.place = pick;
+      // Let the helper fill the coordinate fields first
+      setTimeout(loadClimate, 0);
+    });
+
+    $('#tool-card').replaceChildren(
+      el('div', { class: 'tool-head' }, el('h2', { text: 'Climate explorer' }), el('code', { text: 'Open-Meteo ERA5 archive · 1940–present' })),
+      el('div', { class: 'tool-desc' },
+        'Daily highs and lows for any year, over the normal range for each calendar day. ',
+        el('details', {}, el('summary', { text: 'How to read it' }), el('p', { text:
+          'Gray bars span each day\'s low to high (blue and red ticks). The shaded bands show where highs (red) and lows (blue) usually fall on that date: ' +
+          'the darker band is the middle 50% (25th–75th percentile) and the lighter band the middle 80% (10th–90th) of the baseline years, ' +
+          'pooling ±7 days around each date. Faint lines are the averages; dotted lines are the record high and low for each date since 1940. ' +
+          'Drag across the chart to zoom, double-click to zoom back out, and use the arrow keys to step through days. ' +
+          'Values are ERA5 reanalysis (a ~25 km grid average), so they can differ by a few degrees from an airport station.' }))),
+      helper,
+      el('div', { class: 'cx-form' },
+        numField('latitude', 'Latitude', saved.latitude),
+        numField('longitude', 'Longitude', saved.longitude),
+        el('div', { class: 'field' }, el('label', { class: 'name', for: 'cx-baseline', text: 'Normals baseline' }), baselineSelect),
+        el('div', { class: 'field' }, el('button', { class: 'btn primary', type: 'button', id: 'cx-load', onclick: loadClimate }, el('span', { text: 'Load' })))),
+      el('div', { id: 'cx-status' }),
+      el('div', { id: 'cx-body' }));
+
+    if (cx.data) renderClimate();
+    else if (saved.latitude !== undefined && saved.longitude !== undefined) loadClimate();
+  }
+
+  // Build the card once per data load; view changes go through updateClimate()
+  function renderClimate() {
+    const body = $('#cx-body');
+    if (!body || !cx.data) return;
+    const { location: loc, climatology: clim } = cx.data;
+    const coord = `${Math.abs(loc.latitude).toFixed(2)}°${loc.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(loc.longitude).toFixed(2)}°${loc.longitude >= 0 ? 'E' : 'W'}`;
+
+    const yearSelect = el('select', { 'aria-label': 'Year' });
+    for (let y = lastYear(); y >= firstYear(); y--) yearSelect.append(el('option', { value: y, text: y }));
+    yearSelect.addEventListener('change', () => { cx.mode.year = Number(yearSelect.value); cx.range = null; updateClimate(); });
+
+    const prev = el('button', { class: 'btn cx-arrow', type: 'button', 'aria-label': 'Previous', text: '‹', onclick: () => stepView(-1) });
+    const next = el('button', { class: 'btn cx-arrow', type: 'button', 'aria-label': 'Next', text: '›', onclick: () => stepView(1) });
+
+    const yearBtn = el('button', { type: 'button', text: 'Year',
+      onclick: () => { cx.mode.month = null; cx.range = null; updateClimate(); } });
+    const monthBtns = MONTHS.map((m, i) => el('button', { type: 'button', text: m,
+      onclick: () => { cx.mode.month = i; cx.range = null; updateClimate(); } }));
+    const monthSeg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Month' }, yearBtn, monthBtns);
+
+    const unitBtns = ['F', 'C'].map((u) => el('button', { type: 'button', text: `°${u}`, 'data-unit': u,
+      onclick: () => { cx.unit = u; store.set('weather-console:climate:unit', u); updateClimate(); } }));
+    const unitSeg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Units' }, unitBtns);
+
+    const toggle = (label, key, storeKey) => {
+      const box = el('input', { type: 'checkbox' });
+      box.checked = cx[key];
+      box.addEventListener('change', () => { cx[key] = box.checked; store.set(storeKey, box.checked); updateClimate(); });
+      return el('label', { class: 'switch' }, box, el('span', { text: label }));
+    };
+
+    const lastN = el('button', { class: 'btn small', type: 'button', text: 'Last 12 months', onclick: () => {
+      const n = cx.dataLen;
+      cx.range = [Math.max(0, n - 365), n];
+      cx.mode = { year: lastYear(), month: null };
+      updateClimate();
+    } });
+
+    const chart = el('div', { class: 'cx-chart', tabindex: '0', role: 'img' });
+    const tip = el('div', { class: 'cx-tip', hidden: true });
+    chart.append(tip);
+
+    const recordLegend = [
+      el('span', {}, el('i', { style: 'border-top:1.5px dotted var(--hi);height:0' }), 'Record for the date'),
+      el('span', {}, el('i', { style: 'border:1.5px solid var(--hi);border-radius:50%;width:9px;height:9px' }), 'Record set that day'),
+    ];
+
+    body.replaceChildren(
+      el('section', { class: 'card', style: 'margin-top:16px' },
+        el('div', { class: 'cx-place' },
+          el('strong', { text: cx.place && cx.place.label ? cx.place.label : coord }), ' · ',
+          cx.place && cx.place.label ? `${coord} · ` : '',
+          `${Math.round(loc.elevation)} m · ${loc.timezone} · data ${fmtDate(cx.data.start)} – ${fmtDate(cx.data.end)} · normals ${clim.baseline.startYear}–${clim.baseline.endYear}`),
+        el('div', { class: 'cx-toolbar' },
+          el('span', { class: 'cx-year' }, prev, yearSelect, next),
+          monthSeg, lastN,
+          el('span', { class: 'grow' }),
+          toggle('Records', 'showRecords', 'weather-console:climate:records'),
+          toggle('Precipitation', 'showPrecip', 'weather-console:climate:precip'),
+          unitSeg),
+        chart,
+        el('div', { class: 'cx-legend' },
+          el('span', {}, el('i', { style: 'background:var(--bar);opacity:.6;width:4px;height:14px' }), 'Daily range'),
+          el('span', {}, el('i', { style: 'background:var(--hi);height:3px' }), 'High'),
+          el('span', {}, el('i', { style: 'background:var(--lo);height:3px' }), 'Low'),
+          el('span', {}, el('i', { style: 'background:color-mix(in srgb, var(--hi) 30%, transparent)' }), '25th–75th pct'),
+          el('span', {}, el('i', { style: 'background:color-mix(in srgb, var(--hi) 13%, transparent)' }), '10th–90th pct'),
+          recordLegend),
+        el('div', { class: 'cx-stats', id: 'cx-stats' })));
+
+    cx.ui = { yearSelect, prev, next, yearBtn, monthBtns, unitBtns, recordLegend, chart, tip };
+    if ('ResizeObserver' in window) {
+      let lastWidth = chart.clientWidth;
+      new ResizeObserver(() => {
+        if (chart.isConnected && chart.clientWidth !== lastWidth) { lastWidth = chart.clientWidth; drawChart(chart, tip); }
+      }).observe(chart);
+    }
+    updateClimate();
+  }
+
+  // Redraw the chart and summary for the current view and sync the controls, leaving the rest of the page alone
+  function updateClimate() {
+    const ui = cx.ui;
+    if (!ui || !ui.chart.isConnected) { renderClimate(); return; }
+    const [a, b] = viewRange();
+    const zoomed = cx.range !== null;
+
+    ui.yearSelect.value = String(cx.mode.year);
+    ui.prev.disabled = a <= 0;
+    ui.next.disabled = b >= cx.dataLen;
+    ui.yearBtn.setAttribute('aria-pressed', String(cx.mode.month === null && !zoomed));
+    ui.monthBtns.forEach((btn, i) => btn.setAttribute('aria-pressed', String(cx.mode.month === i && !zoomed)));
+    ui.unitBtns.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.unit === cx.unit)));
+    ui.recordLegend.forEach((item) => { item.hidden = !cx.showRecords; });
+
+    const rangeLabel = zoomed
+      ? `${fmtDate(cx.iso[a])} – ${fmtDate(cx.iso[b - 1])}`
+      : cx.mode.month === null ? String(cx.mode.year) : `${MONTHS[cx.mode.month]} ${cx.mode.year}`;
+    ui.chart.setAttribute('aria-label', `Daily high and low temperatures, ${rangeLabel}`);
+    drawChart(ui.chart, ui.tip);
+    renderStats([a, b], rangeLabel);
+  }
+
+  function stepView(dir) {
+    if (cx.range) {
+      const [a, b] = cx.range;
+      const span = b - a;
+      const n = cx.dataLen;
+      const na = Math.max(0, Math.min(n - span, a + dir * span));
+      cx.range = [na, na + span];
+      cx.mode.year = Number(cx.iso[na].slice(0, 4));
+    } else if (cx.mode.month === null) {
+      cx.mode.year += dir;
+    } else {
+      let m = cx.mode.month + dir;
+      let y = cx.mode.year;
+      if (m < 0) { m = 11; y--; }
+      if (m > 11) { m = 0; y++; }
+      cx.mode = { year: y, month: m };
+    }
+    cx.mode.year = Math.min(Math.max(cx.mode.year, firstYear()), lastYear());
+    cx.hover = null;
+    updateClimate();
+  }
+
+  // ----- chart -----
+  function niceStep(span) {
+    const steps = cx.unit === 'F' ? [5, 10, 20] : [2, 5, 10];
+    return steps.find((s) => span / s <= 9) || steps[steps.length - 1];
+  }
+
+  function drawChart(chart, tip) {
+    const d = cx.data;
+    const clim = d.climatology;
+    const [a, b] = viewRange();
+    const days = b - a;
+    const W = Math.max(240, chart.clientWidth || 800);
+    const ml = 44, mr = 12, mt = 10;
+    const mainH = W < 600 ? 280 : 380;
+    const axisH = 24;
+    const precipH = cx.showPrecip ? 64 : 0;
+    const gap = cx.showPrecip ? 14 : 0;
+    const H = mt + mainH + axisH + gap + precipH + (cx.showPrecip ? 4 : 0);
+    const plotW = W - ml - mr;
+    const dayW = plotW / days;
+    const xc = (i) => ml + (i - a + 0.5) * dayW; // day center
+    const xl = (i) => ml + (i - a) * dayW;       // day left edge
+
+    // Y domain in display units
+    let lo = Infinity, hi = -Infinity;
+    const take = (v) => { if (v !== null && v !== undefined) { const u = toUnit(v); if (u < lo) lo = u; if (u > hi) hi = u; } };
+    for (let i = a; i < b; i++) {
+      const s = cx.slot[i];
+      take(d.high[i]); take(d.low[i]);
+      const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+      if (qh) take(qh[Q90]);
+      if (ql) take(ql[Q10]);
+      if (cx.showRecords) {
+        if (clim.recordHigh[s]) take(clim.recordHigh[s].value);
+        if (clim.recordLow[s]) take(clim.recordLow[s].value);
+      }
+    }
+    if (!Number.isFinite(lo)) { lo = toUnit(0); hi = toUnit(100); }
+    const step = niceStep(hi - lo);
+    lo = Math.floor(lo / step) * step;
+    hi = Math.ceil(hi / step) * step;
+    if (hi === lo) hi = lo + step;
+    const y = (f) => mt + (1 - (toUnit(f) - lo) / (hi - lo)) * mainH;
+    const yu = (u) => mt + (1 - (u - lo) / (hi - lo)) * mainH;
+
+    const parts = [];
+    const f1 = (n) => n.toFixed(1);
+
+    // Grid + y labels
+    for (let v = lo; v <= hi + 1e-9; v += step) {
+      const yy = f1(yu(v));
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${yy}" y2="${yy}"/>`);
+      parts.push(`<text x="${ml - 6}" y="${yy}" dy="0.32em" text-anchor="end">${v}°</text>`);
+    }
+    const freezing = cx.unit === 'F' ? 32 : 0;
+    if (freezing > lo && freezing < hi) {
+      parts.push(`<line class="freeze" x1="${ml}" x2="${W - mr}" y1="${f1(yu(freezing))}" y2="${f1(yu(freezing))}"/>`);
+    }
+
+    // X axis: month boundaries for long views, day ticks for short ones
+    const axisY = mt + mainH;
+    const crossesYear = cx.iso[a].slice(0, 4) !== cx.iso[b - 1].slice(0, 4);
+    if (days > 62) {
+      for (let i = a; i < b; i++) {
+        const iso = cx.iso[i];
+        if (i !== a && iso.slice(8) !== '01') continue;
+        let j = i + 1;
+        while (j < b && cx.iso[j].slice(8) !== '01') j++;
+        const m = Number(iso.slice(5, 7)) - 1;
+        if (i !== a) parts.push(`<line class="grid" x1="${f1(xl(i))}" x2="${f1(xl(i))}" y1="${mt}" y2="${axisY + 4}"/>`);
+        if ((j - i) * dayW > 22) {
+          const label = crossesYear && m === 0 ? `${MONTHS[m]} ${iso.slice(0, 4)}` : MONTHS[m];
+          parts.push(`<text x="${f1((xl(i) + xl(j)) / 2)}" y="${axisY + 16}" text-anchor="middle">${label}</text>`);
+        }
+      }
+    } else {
+      const every = Math.max(1, Math.ceil(days / (plotW / 46)));
+      for (let i = a; i < b; i++) {
+        const dom = Number(cx.iso[i].slice(8));
+        if ((i - a) % every !== 0) continue;
+        const m = Number(cx.iso[i].slice(5, 7)) - 1;
+        const label = i === a || dom <= every ? `${MONTHS[m]} ${dom}` : String(dom);
+        parts.push(`<line class="grid" x1="${f1(xc(i))}" x2="${f1(xc(i))}" y1="${axisY}" y2="${axisY + 4}"/>`);
+        parts.push(`<text x="${f1(xc(i))}" y="${axisY + 16}" text-anchor="middle">${label}</text>`);
+      }
+    }
+
+    // Bands and mean lines (extend to the view edges)
+    const band = (qs, lowIdx, highIdx, cls) => {
+      const top = [], bot = [];
+      for (let i = a; i < b; i++) {
+        const q = qs[cx.slot[i]];
+        if (!q) continue;
+        const xs = i === a ? [xl(i), xc(i)] : i === b - 1 ? [xc(i), xl(i + 1)] : [xc(i)];
+        for (const x of xs) { top.push(`${f1(x)},${f1(y(q[highIdx]))}`); bot.push(`${f1(x)},${f1(y(q[lowIdx]))}`); }
+      }
+      if (top.length) parts.push(`<path class="${cls}" d="M${top.join('L')}L${bot.reverse().join('L')}Z"/>`);
+    };
+    const line = (values, cls, getter = (v) => v) => {
+      const pts = [];
+      for (let i = a; i < b; i++) {
+        const v = values[cx.slot[i]];
+        if (v === null || v === undefined) continue;
+        const xs = i === a ? [xl(i), xc(i)] : i === b - 1 ? [xc(i), xl(i + 1)] : [xc(i)];
+        for (const x of xs) pts.push(`${f1(x)},${f1(y(getter(v)))}`);
+      }
+      if (pts.length) parts.push(`<path class="${cls}" d="M${pts.join('L')}"/>`);
+    };
+    band(clim.low.quantiles, Q10, Q90, 'band band-lo outer');
+    band(clim.high.quantiles, Q10, Q90, 'band band-hi outer');
+    band(clim.low.quantiles, Q25, Q75, 'band band-lo inner');
+    band(clim.high.quantiles, Q25, Q75, 'band band-hi inner');
+    line(clim.low.mean, 'mean lo');
+    line(clim.high.mean, 'mean hi');
+    if (cx.showRecords) {
+      line(clim.recordHigh, 'record hi', (r) => r.value);
+      line(clim.recordLow, 'record lo', (r) => r.value);
+    }
+
+    // Days
+    const barW = Math.max(1, Math.min(dayW * 0.5, 8));
+    const tickW = Math.max(2, Math.min(dayW * 0.85, 12));
+    const markR = Math.max(2.5, Math.min(dayW * 0.35, 4.5));
+    for (let i = a; i < b; i++) {
+      const h = d.high[i], l = d.low[i];
+      if (h === null || l === null) continue;
+      const x = xc(i);
+      const yh = y(h), yl = y(l);
+      parts.push(`<rect class="day" x="${f1(x - barW / 2)}" y="${f1(yh)}" width="${f1(barW)}" height="${f1(Math.max(1, yl - yh))}"/>`);
+      parts.push(`<line class="tick-hi" x1="${f1(x - tickW / 2)}" x2="${f1(x + tickW / 2)}" y1="${f1(yh)}" y2="${f1(yh)}"/>`);
+      parts.push(`<line class="tick-lo" x1="${f1(x - tickW / 2)}" x2="${f1(x + tickW / 2)}" y1="${f1(yl)}" y2="${f1(yl)}"/>`);
+    }
+    if (cx.showRecords) {
+      for (let i = a; i < b; i++) {
+        const s = cx.slot[i];
+        const year = Number(cx.iso[i].slice(0, 4));
+        const rh = clim.recordHigh[s], rl = clim.recordLow[s];
+        if (rh && rh.year === year && d.high[i] !== null) parts.push(`<circle class="set-hi" cx="${f1(xc(i))}" cy="${f1(y(d.high[i]))}" r="${markR}"/>`);
+        if (rl && rl.year === year && d.low[i] !== null) parts.push(`<circle class="set-lo" cx="${f1(xc(i))}" cy="${f1(y(d.low[i]))}" r="${markR}"/>`);
+      }
+    }
+
+    // Precipitation strip
+    const pTop = axisY + axisH + gap;
+    if (cx.showPrecip) {
+      let pMax = 0;
+      for (let i = a; i < b; i++) if (d.precipitation[i] > pMax) pMax = d.precipitation[i];
+      pMax = Math.max(pMax, 0.5);
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${pTop + precipH}" y2="${pTop + precipH}"/>`);
+      parts.push(`<text class="axis-title" x="${ml - 6}" y="${pTop + 8}" text-anchor="end">${cx.unit === 'F' ? 'in' : 'mm'}</text>`);
+      parts.push(`<text x="${ml - 6}" y="${pTop + 22}" text-anchor="end">${cx.unit === 'F' ? pMax.toFixed(1) : Math.round(pMax * 25.4)}</text>`);
+      parts.push(`<line class="grid" x1="${ml}" x2="${W - mr}" y1="${pTop + 22}" y2="${pTop + 22}" stroke-dasharray="2 3"/>`);
+      const scale = (precipH - 22) / pMax;
+      const pw = Math.max(1, Math.min(dayW * 0.7, 10));
+      for (let i = a; i < b; i++) {
+        const p = d.precipitation[i];
+        if (!p || p < 0.005) continue;
+        const hgt = Math.max(1, p * scale);
+        parts.push(`<rect class="precip" x="${f1(xc(i) - pw / 2)}" y="${f1(pTop + precipH - hgt)}" width="${f1(pw)}" height="${f1(hgt)}"/>`);
+      }
+    }
+
+    // Interaction layers
+    parts.push(`<g id="cx-hover"></g><g id="cx-level"></g><rect class="brush" id="cx-brush" x="0" y="${mt}" width="0" height="${mainH}" visibility="hidden"/>`);
+    parts.push(`<rect class="hit" x="0" y="${mt}" width="${f1(ml + plotW)}" height="${H - mt}"/>`);
+
+    let svg = chart.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS(SVG_NS, 'svg');
+      chart.prepend(svg);
+      wireChart(chart, svg, tip);
+    }
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.innerHTML = parts.join('');
+    svg._geom = { a, b, ml, mr, mt, mainH, H, dayW, xc, xl, y, plotW, W, lo, hi };
+    if (cx.hover !== null && cx.hover >= a && cx.hover < b) showHover(chart, svg, tip, cx.hover);
+    else tip.hidden = true;
+  }
+
+  function showHover(chart, svg, tip, i) {
+    const g = svg._geom;
+    const hover = svg.querySelector('#cx-hover');
+    if (i === null || i < g.a || i >= g.b) { hover.innerHTML = ''; tip.hidden = true; return; }
+    cx.hover = i;
+    const x = g.xc(i);
+    hover.innerHTML = `<rect class="cross-day" x="${(g.xl(i)).toFixed(1)}" y="${g.mt}" width="${Math.max(1, g.dayW).toFixed(1)}" height="${g.H - g.mt}"/>` +
+      `<line class="cross" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${g.mt}" y2="${g.H}"/>`;
+
+    const d = cx.data, clim = d.climatology, s = cx.slot[i];
+    const year = Number(cx.iso[i].slice(0, 4));
+    const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+    const rh = clim.recordHigh[s], rl = clim.recordLow[s];
+    const row = (cls, label, value, q, mean) => el('div', {},
+      el('div', { class: `row ${cls}` }, el('b', { text: label }), el('span', { text: fmtT(value) }),
+        value !== null && q ? el('span', { class: 'm', text: rankText(percentileRank(value, q)) }) : null),
+      q ? el('div', { class: 'm', text: `normal ${fmtT(q[Q25])}–${fmtT(q[Q75])}, avg ${fmtT(mean)}` } ) : null);
+    const flags = [];
+    if (rh && rh.year === year && d.high[i] !== null) flags.push('Record high for the date');
+    if (rl && rl.year === year && d.low[i] !== null) flags.push('Record low for the date');
+    tip.replaceChildren(...[
+      el('div', { class: 'd', text: fmtDate(cx.iso[i], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) }),
+      row('hi', 'High', d.high[i], qh, clim.high.mean[s]),
+      row('lo', 'Low', d.low[i], ql, clim.low.mean[s]),
+      el('div', { class: 'row', style: 'margin-top:3px' }, el('b', { text: 'Precip' }), el('span', { text: fmtP(d.precipitation[i]) })),
+      rh || rl ? el('div', { class: 'm', style: 'margin-top:3px' },
+        `Records: ${rh ? `${fmtT(rh.value)} (${rh.year})` : '—'} / ${rl ? `${fmtT(rl.value)} (${rl.year})` : '—'}`) : null,
+      flags.length ? el('div', { class: 'flag', text: flags.join(' · ') }) : null,
+    ].filter(Boolean));
+    tip.hidden = false;
+
+    // Place the tooltip beside the crosshair, flipping near the right edge
+    const scale = chart.clientWidth / g.W;
+    const px = x * scale;
+    const tw = tip.offsetWidth;
+    tip.style.left = `${px + 14 + tw > chart.clientWidth ? Math.max(0, px - 14 - tw) : px + 14}px`;
+    // Sit just below the pointer's level line, or above it when there's no room below.
+    // Without a pointer (keyboard), sit below the day's high.
+    const anchor = (cx.pointerY ?? (d.high[i] !== null ? g.y(d.high[i]) : g.mt)) * scale;
+    const th = tip.offsetHeight;
+    const below = anchor + 16;
+    const top = below + th <= chart.clientHeight ? below : anchor - 16 - th;
+    tip.style.top = `${Math.max(0, Math.min(top, chart.clientHeight - th))}px`;
+  }
+
+  // Horizontal guide at the pointer's height, labeled on the temperature axis
+  function showLevel(svg, svgY) {
+    const g = svg._geom;
+    const group = svg.querySelector('#cx-level');
+    if (svgY === null || svgY < g.mt || svgY > g.mt + g.mainH) { group.innerHTML = ''; return; }
+    const value = g.lo + (1 - (svgY - g.mt) / g.mainH) * (g.hi - g.lo);
+    const yy = svgY.toFixed(1);
+    group.innerHTML = `<line class="level" x1="${g.ml}" x2="${g.W - g.mr}" y1="${yy}" y2="${yy}"/>` +
+      `<g class="level-tag"><rect x="1" y="${(svgY - 9).toFixed(1)}" width="${g.ml - 4}" height="18" rx="4"/>` +
+      `<text x="${g.ml - 7}" y="${yy}" dy="0.34em" text-anchor="end">${Math.round(value)}°${cx.unit}</text></g>`;
+  }
+
+  function wireChart(chart, svg, tip) {
+    const toSvg = (e) => {
+      const g = svg._geom;
+      const rect = svg.getBoundingClientRect();
+      const k = g.W / rect.width;
+      return { x: (e.clientX - rect.left) * k, y: (e.clientY - rect.top) * k };
+    };
+    const indexAt = (clientX) => {
+      const g = svg._geom;
+      const rect = svg.getBoundingClientRect();
+      const x = (clientX - rect.left) * (g.W / rect.width);
+      const i = g.a + Math.floor((x - g.ml) / g.dayW);
+      return Math.max(g.a, Math.min(g.b - 1, i));
+    };
+    let brush = null;
+    chart.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !e.target.classList.contains('hit') || toSvg(e).x < svg._geom.ml) return;
+      brush = { start: indexAt(e.clientX), x: e.clientX, moved: false };
+      chart.setPointerCapture(e.pointerId);
+    });
+    chart.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && !e.target.closest('svg') && !brush) return;
+      const pos = toSvg(e);
+      showLevel(svg, brush ? null : pos.y);
+      cx.pointerY = pos.y;
+      if (pos.x < svg._geom.ml && !brush) { showHover(chart, svg, tip, null); return; }
+      const i = indexAt(e.clientX);
+      if (brush && Math.abs(e.clientX - brush.x) > 5) {
+        brush.moved = true;
+        const g = svg._geom;
+        const [lo, hi] = [Math.min(brush.start, i), Math.max(brush.start, i)];
+        const r = svg.querySelector('#cx-brush');
+        r.setAttribute('x', g.xl(lo).toFixed(1));
+        r.setAttribute('width', (g.xl(hi + 1) - g.xl(lo)).toFixed(1));
+        r.setAttribute('visibility', 'visible');
+      }
+      showHover(chart, svg, tip, i);
+    });
+    const endBrush = (e) => {
+      if (!brush) return;
+      const done = brush;
+      brush = null;
+      if (!done.moved) return;
+      const i = indexAt(e.clientX);
+      const lo = Math.min(done.start, i), hi = Math.max(done.start, i) + 1;
+      if (hi - lo >= 3) {
+        cx.range = [lo, hi];
+        updateClimate();
+      } else {
+        svg.querySelector('#cx-brush').setAttribute('visibility', 'hidden');
+      }
+    };
+    chart.addEventListener('pointerup', endBrush);
+    chart.addEventListener('pointercancel', () => { brush = null; });
+    chart.addEventListener('pointerleave', () => {
+      if (brush) return;
+      cx.hover = null;
+      showHover(chart, svg, tip, null);
+      showLevel(svg, null);
+      cx.pointerY = null;
+    });
+    chart.addEventListener('dblclick', () => {
+      if (!cx.range && cx.mode.month === null) return;
+      cx.range = null;
+      cx.mode.month = null;
+      updateClimate();
+    });
+    chart.addEventListener('keydown', (e) => {
+      const g = svg._geom;
+      cx.pointerY = null;
+      const moves = { ArrowLeft: -1, ArrowRight: 1, PageUp: -7, PageDown: 7 };
+      if (e.key in moves) {
+        e.preventDefault();
+        const from = cx.hover === null || cx.hover < g.a || cx.hover >= g.b ? (moves[e.key] > 0 ? g.a - 1 : g.b) : cx.hover;
+        showHover(chart, svg, tip, Math.max(g.a, Math.min(g.b - 1, from + moves[e.key])));
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        showHover(chart, svg, tip, e.key === 'Home' ? g.a : g.b - 1);
+      } else if (e.key === 'Escape') {
+        cx.hover = null;
+        showHover(chart, svg, tip, null);
+      }
+    });
+    chart.addEventListener('blur', () => { cx.hover = null; showHover(chart, svg, tip, null); });
+  }
+
+  // ----- summary for the visible range -----
+  function renderStats([a, b], rangeLabel) {
+    const box = $('#cx-stats');
+    const d = cx.data, clim = d.climatology;
+    let n = 0, sumHi = 0, sumLo = 0, hot = 0, cold = 0, recHi = 0, recLo = 0;
+    let warm = null, coldest = null, precip = 0, precipNormal = 0, wetDays = 0;
+    for (let i = a; i < b; i++) {
+      const s = cx.slot[i];
+      const h = d.high[i], l = d.low[i];
+      const year = Number(cx.iso[i].slice(0, 4));
+      if (h !== null && l !== null && clim.high.mean[s] !== null && clim.low.mean[s] !== null) {
+        n++;
+        sumHi += h - clim.high.mean[s];
+        sumLo += l - clim.low.mean[s];
+        const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
+        if (qh && h > qh[Q90]) hot++;
+        if (ql && l < ql[Q10]) cold++;
+        if (clim.recordHigh[s] && clim.recordHigh[s].year === year) recHi++;
+        if (clim.recordLow[s] && clim.recordLow[s].year === year) recLo++;
+        if (warm === null || h > d.high[warm]) warm = i;
+        if (coldest === null || l < d.low[coldest]) coldest = i;
+      }
+      if (d.precipitation[i] !== null) {
+        precip += d.precipitation[i];
+        if (d.precipitation[i] >= 0.01) wetDays++;
+        if (clim.precipitationMean[s] !== null) precipNormal += clim.precipitationMean[s];
+      }
+    }
+    if (!n) { box.replaceChildren(el('div', { class: 'hint', text: 'No data in this range.' })); return; }
+    const stat = (k, v, sub, cls) => el('div', { class: 'cx-stat' }, el('div', { class: 'k', text: k }), el('div', { class: `v ${cls || ''}`, text: v }), sub ? el('div', { class: 's', text: sub }) : null);
+    const pct = precipNormal > 0 ? Math.round((precip / precipNormal) * 100) : null;
+    box.replaceChildren(
+      stat('Highs vs normal', fmtDelta(sumHi / n), `${rangeLabel}, ${n} days`, sumHi >= 0 ? 'hi' : 'lo'),
+      stat('Lows vs normal', fmtDelta(sumLo / n), `avg departure from ${clim.baseline.startYear}–${clim.baseline.endYear}`, sumLo >= 0 ? 'hi' : 'lo'),
+      stat('Warmest', fmtT(d.high[warm]), fmtDate(cx.iso[warm]), 'hi'),
+      stat('Coldest', fmtT(d.low[coldest]), fmtDate(cx.iso[coldest]), 'lo'),
+      stat('Unusually hot days', String(hot), 'high above 90th pct', 'hi'),
+      stat('Unusually cold nights', String(cold), 'low below 10th pct', 'lo'),
+      stat('Records set', `${recHi} / ${recLo}`, 'high / low, still standing'),
+      stat('Precipitation', fmtP(precip), `${pct === null ? '' : `${pct}% of normal (${fmtP(precipNormal)}) · `}${wetDays} wet days`));
+  }
+
+  // ---------------------------------------------------------------------
   // Saved locations (for the picker and alias autocomplete)
   // ---------------------------------------------------------------------
   async function refreshSavedLocations() {
@@ -1066,6 +1846,11 @@
     await refreshSavedLocations();
     const fromHash = decodeURIComponent(location.hash.slice(1));
     const last = store.get('weather-console:last-tool');
+    if (fromHash === 'climate' || (!fromHash && last === 'climate')) {
+      renderToolList();
+      showClimateExplorer();
+      return;
+    }
     const initial = [fromHash, last, 'get_forecast'].find((n) => n && tools.some((t) => t.name === n)) || (tools[0] && tools[0].name);
     renderToolList();
     if (initial) selectTool(initial);
