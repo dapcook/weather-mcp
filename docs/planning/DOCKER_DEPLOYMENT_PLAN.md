@@ -13,7 +13,7 @@ Docker + Docker Compose, SD-card storage.
 |---|---|---|
 | 1 | Fix the ARM crash in the GRIB (NOMADS) library | Done |
 | 2 | One server process for LLMs (`/mcp`) and the console | Done |
-| 3 | Docker packaging, tested on a Mac | Planned |
+| 3 | Docker packaging, tested on a Mac | Done |
 | 4 | Deploy to the Pi | Planned |
 | 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Planned |
 | 6 | Docs and PR | Planned |
@@ -167,6 +167,29 @@ it is published for `cpu: wasm32`.
   `.env.example` documenting every setting.
 - Test on the Mac: `docker compose up`, console at `http://localhost:3003`, Claude Code
   against `http://localhost:3003/mcp`.
+
+**Results** (Docker 29.8 / Compose v5.5 on Apple Silicon, i.e. `linux/arm64` like the Pi):
+- Image `weather-mcp:local`: 292 MB, runs as `node` (uid 1000). The `deps` stage checks
+  whether the native GRIB decoder loads and installs the WebAssembly build only if not
+  (so `linux/amd64` keeps the native one). Node logs a one-time "WASI is an experimental
+  feature" warning on first NOMADS use; harmless.
+- Container healthy within seconds; `/health` open, `/api/*` and `/mcp` return 401 without
+  the token and work with it.
+- Over `/mcp` with the token: 18 tools; `save_location` wrote to the volume;
+  `get_current_conditions` by saved name; model comparison with GFS + HRRR decoded via
+  WebAssembly (~16 s).
+- `docker exec -i weather-mcp node dist/index.js` (stdio fallback): 18 tools, sees the
+  same saved locations.
+- Saved locations survived `docker compose down` + `up` (container recreated).
+- Hardening verified: read-only root filesystem (writes to `/app` and `/home/node`
+  fail), `cap_drop: ALL`, `no-new-privileges`, 768 MB limit, log rotation, `init`.
+- Console at `http://localhost:3003`: sign-in box, then tools run against the container.
+- Fix found while testing: analytics tried to write its salt to the read-only home
+  directory (it generates one even when analytics is off). It now uses
+  `WEATHER_MCP_DATA_DIR` when set, so the salt lands on the volume.
+- `.env.example` no longer sets `ENABLED_TOOLS=basic` (copying it for the container would
+  have cut the tools from 18 to 9) and documents the web/Docker settings; `/data/` is
+  git-ignored.
 
 ## Phase 4: Deploy to the Pi
 

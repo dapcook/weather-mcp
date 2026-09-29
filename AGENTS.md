@@ -194,6 +194,14 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 - `WEATHER_MCP_DATA_DIR` — folder for `locations.json` (default `~/.weather-mcp`; also honored by the stdio entry)
 - `ENABLED_TOOLS` — which MCP tools to expose (defaults to `all` in web mode)
 
+### Docker
+
+`Dockerfile` + `docker-compose.yml` run the web server (`/mcp` + console) in one container on port 3003, with saved locations on a `./data` volume and settings from `.env` (see `.env.example`). Plan, deployment steps, and client setup: `docs/planning/DOCKER_DEPLOYMENT_PLAN.md`.
+- Base is `node:22-bookworm-slim` (glibc; the GRIB decoder has no musl/Alpine builds)
+- The `deps` stage installs `@mattnucc/gribberish-wasm32-wasi` only when the native decoder won't load (e.g. `linux/arm64`); keep its version pinned to `@mattnucc/gribberish`
+- The container is hardened (non-root `node` user, read-only root filesystem, `cap_drop: ALL`); anything that writes files must use `WEATHER_MCP_DATA_DIR` (`/app/data`) or `/tmp`
+- stdio access: `docker exec -i weather-mcp node dist/index.js`
+
 ## Development Guidelines
 
 ### Code Style

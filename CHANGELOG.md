@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Docker Image and Compose File** - `Dockerfile` (multi-stage, `node:22-bookworm-slim`, non-root, health check; installs the GRIB decoder's WebAssembly build on platforms without a native one, e.g. `linux/arm64`/Raspberry Pi) and `docker-compose.yml` (port 3003, `./data` volume for saved locations, `.env` settings, `unless-stopped`, 768 MB limit, log rotation, read-only filesystem, all capabilities dropped). One container serves `/mcp` for AI clients and the web console; `docker exec -i weather-mcp node dist/index.js` gives stdio access
 - **MCP over HTTP (`/mcp`) and a single-process web server** - `npm run web` now serves AI clients and the web console from one process: a stateless Streamable HTTP MCP endpoint at `/mcp`, the console and its `/api/*`, and `/health`. The console talks to an in-process MCP server (in-memory transport) instead of spawning `dist/index.js`, so both share one set of caches and saved locations
   - New settings: `WEB_HOST`, `WEB_ALLOWED_HOSTS`, `WEATHER_MCP_TOKEN` (bearer token for `/mcp` and `/api/*`; the console shows a sign-in box), `WEATHER_MCP_DATA_DIR` (saved-locations folder, also honored by the stdio server)
   - `src/index.ts` split: tool registry and handlers move to side-effect-free `src/mcpServer.ts` (`createServices()`, `createMcpServer()`); `src/index.ts` is now just the stdio entry point
@@ -30,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
 
 ### Fixed
+- **Analytics Salt in Read-Only Environments** - the analytics salt file is now written to `WEATHER_MCP_DATA_DIR` when set, instead of failing in containers with a read-only home directory
+- **`.env.example`** - no longer sets `ENABLED_TOOLS=basic` (the default when unset), so copying it doesn't silently limit the web server/container to 9 tools; tool counts and web/Docker settings updated
 - **Server Crash on ARM Linux (e.g. Raspberry Pi)** - The GRIB decoder used for NOMADS data (`@mattnucc/gribberish`) has no native `linux-arm64` build, and it was imported at startup, so the whole MCP server failed to start there. It now loads on first NOMADS request: without it, only NOMADS data is unavailable (with a clear "unavailable on this platform" error) and every other tool works. Its WebAssembly build (`@mattnucc/gribberish-wasm32-wasi`) is a working fallback on ARM, with output identical to the native decoder
 - **`npm ci` Failing** - `package-lock.json` was out of sync with `package.json` (and missing peers of the WebAssembly runtime), so clean installs failed; regenerated so `npm ci` works with npm 10 and 11
 - **Model Comparison Error Notes** - per-model "unavailable" notes now give the specific reason instead of the generic "NOMADS API is currently unavailable"
