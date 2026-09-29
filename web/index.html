@@ -376,6 +376,17 @@
   .cx-stat .s { font-size: 12px; color: var(--muted); }
   .cx-stat .v.hi { color: var(--hi); }
   .cx-stat .v.lo { color: var(--lo); }
+  /* ---------- access token sign-in ---------- */
+  .token-overlay {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(0, 0, 0, .45);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .token-dialog { width: min(420px, 100%); }
+  .token-dialog h2 { margin: 0 0 6px; font-size: 17px; }
+  .token-dialog p { margin: 0 0 12px; color: var(--muted); }
+  .token-dialog form { display: flex; gap: 8px; }
+  .token-dialog input { flex: 1; min-width: 0; }
   .error-box { background: var(--err-soft); color: var(--err); padding: 10px 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; }
 </style>
 </head>
@@ -475,12 +486,48 @@
   // ---------------------------------------------------------------------
   // API
   // ---------------------------------------------------------------------
+  // Servers started with WEATHER_MCP_TOKEN require it on every /api call
+  const TOKEN_KEY = 'weather-console:token';
+
+  class AccessTokenRequired extends Error {}
+
   async function api(path, options = {}) {
-    const response = await fetch(path, options);
+    const token = store.get(TOKEN_KEY);
+    const headers = { ...(options.headers || {}) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const response = await fetch(path, { ...options, headers });
     let body;
     try { body = await response.json(); } catch { body = {}; }
+    if (response.status === 401) {
+      showTokenDialog(token ? 'That access token was not accepted. Check it and try again.' : 'This server requires an access token.');
+      throw new AccessTokenRequired('Access token required');
+    }
     if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
     return body;
+  }
+
+  // An in-page form rather than window.prompt, which some embedded and
+  // home-screen browsers don't support
+  function showTokenDialog(message) {
+    if ($('#token-overlay')) return;
+    setStatus('err', 'Access token required');
+    const input = el('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'Access token', placeholder: 'Access token' });
+    const form = el('form', {
+      onsubmit: (e) => {
+        e.preventDefault();
+        const value = input.value.trim();
+        if (!value) return;
+        store.set(TOKEN_KEY, value);
+        location.reload();
+      },
+    }, input, el('button', { class: 'btn primary', type: 'submit', text: 'Connect' }));
+    const overlay = el('div', { class: 'token-overlay', id: 'token-overlay' },
+      el('div', { class: 'card token-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'token-title' },
+        el('h2', { id: 'token-title', text: 'Sign in' }),
+        el('p', { text: `${message} It's the WEATHER_MCP_TOKEN value in the server's .env file; this browser will remember it.` }),
+        form));
+    document.body.append(overlay);
+    input.focus();
   }
 
   // ---------------------------------------------------------------------
@@ -736,7 +783,8 @@
     });
 
     const geoBtn = el('button', { class: 'btn', type: 'button', text: 'Use my location' });
-    geoBtn.hidden = !('geolocation' in navigator);
+    // Browsers only allow geolocation on HTTPS or localhost pages
+    geoBtn.hidden = !('geolocation' in navigator) || !window.isSecureContext;
     geoBtn.addEventListener('click', () => {
       geoBtn.disabled = true;
       navigator.geolocation.getCurrentPosition((pos) => {
@@ -877,10 +925,27 @@
   }
 
   $('#toggle-raw').addEventListener('click', () => { showRaw = !showRaw; renderResult(); });
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    // Plain http:// on the network has no async clipboard API; fall back to a selection copy
+    const area = el('textarea', { readonly: true, 'aria-hidden': 'true' });
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    if (!copied) throw new Error('Copy failed');
+  }
+
   $('#copy-result').addEventListener('click', async () => {
     const btn = $('#copy-result');
     try {
-      await navigator.clipboard.writeText(lastMarkdown);
+      await copyText(lastMarkdown);
       btn.textContent = 'Copied';
     } catch {
       btn.textContent = 'Copy failed';
@@ -1838,6 +1903,7 @@
       ({ tools } = await api('/api/tools'));
       setStatus('ok', `Connected · ${tools.length} tools`);
     } catch (error) {
+      if (error instanceof AccessTokenRequired) return; // the sign-in dialog is showing
       setStatus('err', 'Not connected');
       $('#tool-card').replaceChildren(el('div', { class: 'error-box', text:
         `Couldn't load tools from the MCP server: ${error.message}\n\nMake sure the console is running (npm run web) and check its terminal output.` }));

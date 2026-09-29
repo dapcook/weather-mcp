@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **MCP over HTTP (`/mcp`) and a single-process web server** - `npm run web` now serves AI clients and the web console from one process: a stateless Streamable HTTP MCP endpoint at `/mcp`, the console and its `/api/*`, and `/health`. The console talks to an in-process MCP server (in-memory transport) instead of spawning `dist/index.js`, so both share one set of caches and saved locations
+  - New settings: `WEB_HOST`, `WEB_ALLOWED_HOSTS`, `WEATHER_MCP_TOKEN` (bearer token for `/mcp` and `/api/*`; the console shows a sign-in box), `WEATHER_MCP_DATA_DIR` (saved-locations folder, also honored by the stdio server)
+  - `src/index.ts` split: tool registry and handlers move to side-effect-free `src/mcpServer.ts` (`createServices()`, `createMcpServer()`); `src/index.ts` is now just the stdio entry point
+  - Console: hides "Use my location" where browsers block it (plain `http://` from another device) and falls back to a selection copy where the clipboard API is unavailable
 - **Precipitation Type in Forecasts** - `get_forecast` now names what will fall in each period when precipitation is expected: rain, drizzle, snow, sleet, freezing rain, freezing drizzle, or hail, with a wintry-mix note and an icing warning for freezing rain/drizzle and sleet
   - NOAA (US): from gridpoint `weather` data, with NWS likelihood per type ("rain (likely), snow (chance)"); reuses the gridpoint request already made for snow/ice
   - Open-Meteo: rain/shower and snowfall amounts that were already fetched but not shown, plus freezing rain/drizzle and hail from the WMO weather code (Open-Meteo has no sleet category)

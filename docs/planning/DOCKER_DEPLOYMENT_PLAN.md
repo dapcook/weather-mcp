@@ -12,7 +12,7 @@ Docker + Docker Compose, SD-card storage.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Fix the ARM crash in the GRIB (NOMADS) library | Done |
-| 2 | One server process for LLMs (`/mcp`) and the console | Planned |
+| 2 | One server process for LLMs (`/mcp`) and the console | Done |
 | 3 | Docker packaging, tested on a Mac | Planned |
 | 4 | Deploy to the Pi | Planned |
 | 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Planned |
@@ -114,6 +114,22 @@ it is published for `cpu: wasm32`.
   the page isn't a secure context (plain `http://` on the LAN).
 - Tests: config parsing, host/token checks, and an SDK client connecting to `/mcp` and
   listing tools.
+
+**Results:**
+- `src/index.ts` split into side-effect-free `src/mcpServer.ts` (`createServices()`,
+  `createMcpServer()`, `shutdownServices()`) and a small stdio entry point; stdio
+  behavior verified unchanged (18 tools, same outputs).
+- `src/web/` is now `server.ts` (entry), `app.ts` (routes), `config.ts` (settings),
+  `access.ts` (host/origin/token checks), `envDefaults.ts` (`ENABLED_TOOLS=all`).
+- The climate explorer (`/api/climate`, added on `main` in parallel) was carried over
+  unchanged into `app.ts`.
+- The console's token prompt is an in-page sign-in box: `window.prompt()` throws in some
+  embedded and home-screen browsers (it did in the Claude desktop browser pane).
+- Tests: `tests/unit/web-config.test.ts` (22) and `tests/unit/web-server.test.ts` (12:
+  real server on an ephemeral port, SDK client over `/mcp`, console API, 401/403/405
+  paths); 151 tests pass across the related files.
+- Verified in the browser: tools, climate explorer, and the sign-in flow (wrong token
+  rejected, right token remembered) against a token-protected server.
 
 **Settings (environment variables):**
 

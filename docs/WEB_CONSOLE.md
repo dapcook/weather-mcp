@@ -18,9 +18,9 @@ npm install        # first time only
 npm run web
 ```
 
-`npm run web` compiles the TypeScript (`npm run build`) and then starts the console. When the terminal shows `Weather MCP web console running at http://127.0.0.1:8787`, open **http://127.0.0.1:8787** in a browser.
+`npm run web` compiles the TypeScript (`npm run build`) and then starts the console. When the terminal shows `Weather MCP web server running at http://127.0.0.1:8787`, open **http://127.0.0.1:8787** in a browser.
 
-The status pill in the top-right corner shows **Connected · 18 tools** once the console has started the MCP server. Stop the console with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+The status pill in the top-right corner shows **Connected · 18 tools** once the console has loaded the tool list. Stop the console with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
 You can link straight to a tool or view with a URL hash, for example `http://127.0.0.1:8787/#get_forecast` or `http://127.0.0.1:8787/#climate`. Without a hash, the console reopens the last tool you used.
 
@@ -168,10 +168,14 @@ Set these environment variables before `npm run web`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `WEB_PORT` | `8787` | Port to listen on (1024–65535) |
-| `ENABLED_TOOLS` | `all` | Which tools the console's MCP server exposes; same presets and names as the MCP server (see [Tool Selection](../README.md#tool-selection-new-in-v140)) |
+| `WEB_HOST` | `127.0.0.1` | Address to listen on. `0.0.0.0` makes it reachable from other devices (e.g. in a Docker container); pair it with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` |
+| `WEB_ALLOWED_HOSTS` | *(none)* | Extra hostnames or IPs people and AI clients use to reach it, comma-separated, e.g. `raspberrypi.local,192.168.1.20`. `localhost`, `127.0.0.1` and `::1` are always allowed |
+| `WEATHER_MCP_TOKEN` | *(none)* | If set (16+ characters; `openssl rand -hex 32`), the console API and `/mcp` require it. The console asks for it once in a sign-in box and remembers it in that browser |
+| `WEATHER_MCP_DATA_DIR` | `~/.weather-mcp` | Folder for saved locations (`locations.json`) |
+| `ENABLED_TOOLS` | `all` | Which tools are exposed; same presets and names as the MCP server (see [Tool Selection](../README.md#tool-selection-new-in-v140)) |
 | `LOG_LEVEL` | `1` | `0` for debug logging, which is useful when a tool misbehaves |
 
-The other MCP server settings (`CACHE_ENABLED`, `API_TIMEOUT_MS`, and so on) are passed through to the MCP server the console starts.
+The other MCP server settings (`CACHE_ENABLED`, `API_TIMEOUT_MS`, and so on) apply as usual; the MCP server runs in the same process.
 
 ```bash
 WEB_PORT=8797 npm run web
@@ -184,24 +188,28 @@ LOG_LEVEL=0 npm run web
 | Symptom | Fix |
 |---|---|
 | `EADDRINUSE` when starting | Another program (often another console) is using the port. Stop it, or start this one on another port with `WEB_PORT=8797 npm run web`. |
-| Status shows **Not connected** | The console couldn't start the MCP server. Check the terminal. `npm run web` builds first, but if you start `node dist/web/server.js` yourself, run `npm run build` first. |
+| Status shows **Not connected** | The page couldn't reach the server, or the server failed to start. Check the terminal. `npm run web` builds first, but if you start `node dist/web/server.js` yourself, run `npm run build` first. |
+| A **Sign in** box appears | The server was started with `WEATHER_MCP_TOKEN`. Enter that value; the browser remembers it. If the token changed, the box says the old one wasn't accepted. |
 | Page shows old behavior after pulling changes | Changes to `web/index.html` show up when you refresh. Changes to TypeScript need the console restarted (`npm run web` rebuilds). |
 | A tool is missing from the sidebar | It is disabled by `ENABLED_TOOLS`. |
-| `403 Forbidden host` / `Forbidden origin` | The console only answers `http://127.0.0.1:<port>` and `http://localhost:<port>`. Use one of those addresses. |
+| `403 Forbidden host` / `Forbidden origin` | The console only answers to `localhost`, `127.0.0.1` and names listed in `WEB_ALLOWED_HOSTS`. Add the hostname or IP you're using to `WEB_ALLOWED_HOSTS`. |
+| **Use my location** is missing, or Copy falls back | Browsers only allow location access on `https://` or `localhost` pages, so the button is hidden on plain `http://` from another device. Copy uses an older method there that works in most browsers. |
 | Climate explorer takes a long time or fails | The first load of a place downloads its whole record from Open-Meteo. Check your connection; Open-Meteo's free tier also limits daily requests. |
 
 ## How it works
 
-`src/web/server.ts` is a small Node `http` server. It starts the real MCP server (`dist/index.js`) as a child process and talks to it over MCP stdio through the MCP SDK client, exactly as an AI client would, so results match what an AI sees. If the MCP server exits, the console reconnects on the next request. The page, `web/index.html`, is a single file of plain HTML, CSS and JavaScript with no build step and no third-party scripts.
+`src/web/server.ts` starts a small Node `http` server (`src/web/app.ts`) that serves both AI clients and the console from one process, sharing one set of caches and saved locations. The console talks to the MCP server through an in-process MCP client, exactly as an AI client would, so results match what an AI sees. The page, `web/index.html`, is a single file of plain HTML, CSS and JavaScript with no build step and no third-party scripts.
 
-HTTP endpoints (for the page; the console is not meant as a public API):
+HTTP endpoints (the `/api/*` ones are for the page, not meant as a public API):
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /mcp` | MCP endpoint for AI clients (Streamable HTTP, stateless). Requires the token when `WEATHER_MCP_TOKEN` is set |
+| `GET /health` | `{status, version, uptimeSeconds}`, for container health checks |
 | `GET /` | The console page |
 | `GET /api/tools` | The MCP server's tool list and input schemas |
 | `POST /api/call` | Run a tool. Body: `{"name": "get_forecast", "arguments": {...}}`, sent as `application/json`, up to 64 KB. Returns `{content, isError, elapsedMs}`. Calls time out after 180 s. |
-| `GET /api/saved-locations` | Saved locations, read directly from `~/.weather-mcp/locations.json` |
+| `GET /api/saved-locations` | Saved locations, read directly from `locations.json` in `WEATHER_MCP_DATA_DIR` (default `~/.weather-mcp`) |
 | `GET /api/geocode?q=` | Place search via Nominatim (up to 6 results) |
 | `GET /api/climate?latitude=&longitude=&baseline=` | The climate explorer's data, described below |
 
@@ -218,8 +226,9 @@ The daily record comes from `OpenMeteoService.getDailyTemperatureRecord()` and i
 
 ### Security
 
-- The console listens on `127.0.0.1` only.
-- It rejects requests whose `Host` header isn't its own address (which blocks DNS rebinding) and browser requests from any other origin (which blocks cross-site requests). A web page you visit can't use the console to change your saved locations.
+- By default the server listens on `127.0.0.1` only. Listening more widely (`WEB_HOST=0.0.0.0`) without `WEATHER_MCP_TOKEN` logs a warning.
+- It rejects requests whose `Host` header isn't one of its names (loopback plus `WEB_ALLOWED_HOSTS`), which blocks DNS rebinding, and browser requests from any other origin, which blocks cross-site requests. A web page you visit can't use the console to change your saved locations.
+- With `WEATHER_MCP_TOKEN` set, `/mcp` and `/api/*` require `Authorization: Bearer <token>` (compared in constant time). The page and `/health` stay open because they contain no data.
 - `POST` bodies must be JSON, and their size is capped.
 - The console only calls tools the MCP server lists, and every call goes through the server's normal input validation.
 - The page is served with a strict Content Security Policy: inline code only, no third-party scripts, and requests only to the console itself.

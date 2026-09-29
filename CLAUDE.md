@@ -17,7 +17,8 @@ This document provides context and guidelines for AI assistants (Claude, etc.) w
 
 ```
 src/
-├── index.ts                    # MCP server entry point, tool registry
+├── index.ts                    # stdio entry point (node dist/index.js)
+├── mcpServer.ts                # Tool registry + handlers: createServices(), createMcpServer(); no side effects on import
 ├── handlers/                   # Tool request handlers (one per MCP tool)
 │   ├── forecastHandler.ts
 │   ├── nomadsForecastHandler.ts        # Raw NOMADS/GFS model-run forecast
@@ -46,9 +47,12 @@ src/
 │   ├── usgs.ts                 # USGS water services client
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
-├── web/                        # Web console (browser UI + HTTP API)
-│   └── server.ts               # Node http server; drives real MCP server over stdio;
-│                               #   serves /api/climate for the climate explorer
+├── web/                        # HTTP server: /mcp for AI clients + web console
+│   ├── server.ts               # Entry point (npm run web)
+│   ├── app.ts                  # Routes: /mcp, /, /api/*, /health; /api/climate for the climate explorer
+│   ├── config.ts               # WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN parsing
+│   ├── access.ts               # Host (DNS rebinding), Origin (CSRF), bearer token checks
+│   └── envDefaults.ts          # ENABLED_TOOLS=all default, imported before config/tools
 ├── types/                      # TypeScript type definitions
 │   ├── noaa.ts
 │   ├── openmeteo.ts
@@ -102,8 +106,8 @@ tests/
 3. **Validation First:** All user inputs validated before processing (see `src/utils/validation.ts`)
 4. **Caching Strategy:** LRU cache with TTL based on data volatility (see `src/config/cache.ts`)
 5. **Error Hierarchy:** Custom error classes for different failure scenarios (`src/errors/ApiError.ts`)
-6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/index.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
-7. **Web Console Pattern:** `src/web/server.ts` spawns `dist/index.js` as a child process and communicates via MCP stdio — the browser UI talks to the **real** MCP server, not a mock
+6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/mcpServer.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
+7. **One Server, Several Transports:** `src/mcpServer.ts` builds MCP servers from shared services. `src/index.ts` serves one over stdio; `src/web/app.ts` serves `/mcp` over Streamable HTTP and gives the console an in-process MCP client (in-memory transport), so the browser UI exercises the **real** MCP code path, not a mock
 
 ## Key Features (18 MCP Tools)
 
@@ -136,12 +140,13 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 
 ### Architecture
 
-`src/web/server.ts` is a plain Node `http` server (no framework) that:
-1. Starts `dist/index.js` as a child process and connects to it with the MCP SDK `Client` over `StdioClientTransport`, reconnecting on the next request if it exits
-2. `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
+`src/web/app.ts` is a plain Node `http` server (no framework), started by `src/web/server.ts`. One process, one set of services (caches, `LocationStore`) shared by AI clients and the console:
+1. `POST /mcp` is a stateless Streamable HTTP MCP endpoint (a fresh `createMcpServer()` + transport per request; `GET`/`DELETE` return 405)
+2. The console uses an in-process MCP `Client` connected over `InMemoryTransport`: `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
 3. `GET /api/saved-locations` and `GET /api/geocode?q=` read `LocationStore` / call Nominatim directly for the location helper
 4. `GET /api/climate` serves the climate explorer (see below)
-5. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
+5. `GET /health` returns `{status, version, uptimeSeconds}` (for Docker health checks)
+6. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
 
 `web/index.html` is a self-contained single page (vanilla JS, no build step, ~87 KB):
 - Builds forms dynamically from each tool's JSON schema; remembers each tool's last inputs in localStorage
@@ -149,7 +154,7 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 - **Radar view:** RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–7); pin at the location
 - **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
 
-Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` (CSRF); JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
+Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Origin` (CSRF) against loopback names plus `WEB_ALLOWED_HOSTS`; optional bearer token on `/mcp` and `/api/*`; JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
 
 ### Climate Explorer
 
@@ -181,8 +186,12 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 - Percentile ranks are interpolated in the page from the server's 21 quantiles (`percentileRank` in the page mirrors the one in `climatology.ts`)
 - Only the chart and tiles redraw on view changes (not the full card)
 
-### Environment Variables (web console)
+### Environment Variables (web server)
+- `WEB_HOST` — address to listen on (default `127.0.0.1`; `0.0.0.0` in a container)
 - `WEB_PORT` — HTTP port (default `8787`)
+- `WEB_ALLOWED_HOSTS` — extra hostnames/IPs clients may use, comma-separated (loopback names always allowed)
+- `WEATHER_MCP_TOKEN` — if set (16+ chars), `/mcp` and `/api/*` require `Authorization: Bearer <token>`; the console shows a sign-in box
+- `WEATHER_MCP_DATA_DIR` — folder for `locations.json` (default `~/.weather-mcp`; also honored by the stdio entry)
 - `ENABLED_TOOLS` — which MCP tools to expose (defaults to `all` in web mode)
 
 ## Development Guidelines
@@ -201,8 +210,8 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 2. **Validation:** Add validators to `src/utils/validation.ts`
 3. **Handler:** Create handler in `src/handlers/` following existing patterns
 4. **Service (if needed):** Add API methods to the relevant service in `src/services/`
-5. **Tool Registration:** Register in `src/index.ts` (both `ListToolsRequestSchema` and `CallToolRequestSchema`)
-6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/index.ts` or call `resolveLocation()` in the handler
+5. **Tool Registration:** Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` and the `CallToolRequestSchema` switch in `createMcpServer()`)
+6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts` or call `resolveLocation()` in the handler
 7. **Tests:** Write comprehensive unit + integration tests
 8. **Documentation:** Update `README.md`, `CHANGELOG.md`, and this file
 
@@ -361,8 +370,9 @@ Defense-in-depth: array processing is capped to prevent resource exhaustion:
 
 ### Web Console Security
 
-- Server binds to `127.0.0.1` only (no external exposure)
-- `Origin` and `Host` header validation blocks cross-site requests from pages you visit elsewhere
+- Server binds to `127.0.0.1` by default; set `WEB_HOST=0.0.0.0` (e.g. in a container) only together with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` (the server warns if a non-loopback bind has no token)
+- `Host` validation (DNS rebinding) and `Origin` validation (CSRF) accept only loopback names and `WEB_ALLOWED_HOSTS`
+- Optional bearer token on `/mcp` and `/api/*`, compared in constant time; `/` and `/health` stay open (no data)
 - Request bodies must be `application/json` and are capped at 64 KB; only tools the MCP server lists can be called
 - All tool calls pass through the same input validation as the MCP server; `/api/climate` validates coordinates and the baseline itself
 - The page's CSP allows only inline scripts/styles and same-origin requests
@@ -398,8 +408,12 @@ NCEI_API_TOKEN=                  # Free NOAA NCEI token for official US climate 
 # Lightning
 BLITZORTUNG_MQTT_URL=            # Override MQTT broker URL (default: public Blitzortung broker)
 
-# Web Console
-WEB_PORT=8787                    # Web console port (default: 8787)
+# Web server (npm run web: /mcp endpoint + console)
+WEB_HOST=127.0.0.1               # Listen address (0.0.0.0 in a container)
+WEB_PORT=8787                    # Port (default: 8787)
+WEB_ALLOWED_HOSTS=               # Extra hostnames/IPs, e.g. raspberrypi.local,192.168.1.20
+WEATHER_MCP_TOKEN=               # Bearer token for /mcp and /api/* (openssl rand -hex 32)
+WEATHER_MCP_DATA_DIR=            # Saved-locations folder (default: ~/.weather-mcp)
 ```
 
 ### Tool Presets
@@ -455,7 +469,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 
 ### Adding `location_name` Support to a New Tool
 
-For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/index.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
+For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
 
 ```typescript
 import { resolveLocation } from '../utils/locationResolver.js';
@@ -536,7 +550,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 1. Create handler: `src/handlers/newFeatureHandler.ts`
 2. Define types: `src/types/`
 3. Add service method if needed: `src/services/`
-4. Register in `src/index.ts` (ListTools + CallTool handlers)
+4. Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` + the CallTool switch in `createMcpServer()`)
 5. Add `location_name` support: either add to `SAVED_LOCATION_TOOLS` or call `resolveLocation()` in handler
 6. Write tests: `tests/unit/` and `tests/integration/`
 7. Update `README.md`, `CHANGELOG.md`, and this file
@@ -552,7 +566,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 
 ### Adding a Climate Explorer Data Source
 
-The `/api/climate` endpoint in `src/web/server.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
+The `/api/climate` endpoint in `src/web/app.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
 
 ### Debugging
 

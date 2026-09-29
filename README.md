@@ -477,13 +477,14 @@ npm run web
 
 Then open http://127.0.0.1:8787.
 
-- **Uses the real MCP server.** The console starts `dist/index.js` as a child process and talks to it over MCP stdio, exactly like an AI client does, so results match what an LLM would see.
+- **Uses the real MCP server.** The console talks to the MCP server through an in-process MCP client, exactly like an AI client does, so results match what an LLM would see.
+- **Also an MCP endpoint for AI clients.** The same server answers MCP over HTTP at `/mcp`, so AI clients on other machines can use the tools (e.g. `claude mcp add --transport http weather http://<host>:8787/mcp`). See the [Docker deployment plan](./docs/planning/DOCKER_DEPLOYMENT_PLAN.md) for running it on another machine such as a Raspberry Pi.
 - **Forms come from the tool schemas**, so new tools and parameters appear automatically.
 - **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
 - **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
 - **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
 - **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
-- **Local only:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations.
+- **Local only by default:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations. To reach it from other devices, set `WEB_HOST=0.0.0.0`, list the names you'll use in `WEB_ALLOWED_HOSTS`, and set `WEATHER_MCP_TOKEN` to require a token (the console shows a sign-in box). Details in the [guide](./docs/WEB_CONSOLE.md#configuration).
 
 ## Available Tools
 

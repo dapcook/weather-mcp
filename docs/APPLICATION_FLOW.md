@@ -16,15 +16,20 @@ At runtime, the flow is:
 6. Format a text response and return it through MCP.
 7. Track analytics and log structured events.
 
-Primary entrypoint: `src/index.ts`.
+Entry points:
+
+- `src/index.ts`: stdio transport (AI clients that launch the server as a local command).
+- `src/web/server.ts`: HTTP server with the `/mcp` endpoint (Streamable HTTP) plus the web console; see `docs/WEB_CONSOLE.md`.
+
+Both build their MCP servers from `src/mcpServer.ts`, which holds the tool registry and handlers and has no side effects on import.
 
 ## 2. Startup Sequence
 
-On process start, `src/index.ts` performs the following:
+On process start, an entry point (`src/index.ts` for stdio) performs the following:
 
 1. Loads environment variables via `dotenv/config`.
-2. Reads package version from `package.json`.
-3. Instantiates core services:
+2. Reads package version from `package.json` (in `src/mcpServer.ts`).
+3. Instantiates core services with `createServices()`:
    - `NOAAService`
    - `OpenMeteoService`
    - `NOMADSService`
@@ -33,11 +38,11 @@ On process start, `src/index.ts` performs the following:
    - `NCEIService`
    - `NIFCService`
    - `GeocodingService`
-   - `LocationStore`
-4. Creates MCP server instance via `new Server(...)`.
-5. Defines all tool schemas in `TOOL_DEFINITIONS`.
-6. Registers `ListToolsRequestSchema` and `CallToolRequestSchema` handlers.
-7. Connects the server to `StdioServerTransport`.
+   - `LocationStore` (in `WEATHER_MCP_DATA_DIR` if set, else `~/.weather-mcp`)
+4. Creates an MCP server with `createMcpServer(services)`, which builds `new Server(...)` and registers the `ListToolsRequestSchema` and `CallToolRequestSchema` handlers over the tool schemas in `TOOL_DEFINITIONS`.
+5. Connects the server to `StdioServerTransport`.
+
+The web entry (`src/web/server.ts`) creates the services once, then a fresh MCP server per `/mcp` request (stateless Streamable HTTP) plus one long-lived server connected to the console's in-process client.
 
 ## 3. Tool Exposure and Configuration
 
@@ -73,7 +78,7 @@ Every MCP tool call follows the same pipeline.
 
 ## 5.1 MCP Server Layer
 
-Location: `src/index.ts`
+Location: `src/mcpServer.ts` (entry points: `src/index.ts`, `src/web/server.ts`)
 
 Responsibilities:
 
@@ -222,7 +227,7 @@ Logs include timestamp, level, message, optional context, error details, and met
 
 ## 11. Graceful Shutdown
 
-`src/index.ts` registers signal handlers for:
+Each entry point (`src/index.ts`, `src/web/server.ts`) registers signal handlers for:
 
 - `SIGTERM`
 - `SIGINT`
@@ -254,7 +259,7 @@ A typical `get_forecast` request path:
 
 To trace behavior quickly:
 
-1. Start at `src/index.ts` (`ListToolsRequestSchema`, `CallToolRequestSchema`).
+1. Start at `createMcpServer()` in `src/mcpServer.ts` (`ListToolsRequestSchema`, `CallToolRequestSchema`).
 2. Follow a single tool case to its handler in `src/handlers/`.
 3. Follow service calls in `src/services/`.
 4. Check utilities used by that handler in `src/utils/`.
