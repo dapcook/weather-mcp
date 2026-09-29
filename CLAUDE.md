@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for Weather MCP Server
 
-This document provides context and guidelines for AI assistants (Claude, etc.) working with this codebase.
+This document provides context and guidelines for AI assistants (Claude, etc.) working with this codebase. `AGENTS.md` mirrors it for other agents; when you change one, change the other.
 
 ## Project Overview
 
@@ -47,7 +47,7 @@ src/
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
 ├── web/                        # Web console (browser UI + HTTP API)
-│   └── server.ts               # Express server; drives real MCP server over stdio;
+│   └── server.ts               # Node http server; drives real MCP server over stdio;
 │                               #   serves /api/climate for the climate explorer
 ├── types/                      # TypeScript type definitions
 │   ├── noaa.ts
@@ -102,7 +102,7 @@ tests/
 3. **Validation First:** All user inputs validated before processing (see `src/utils/validation.ts`)
 4. **Caching Strategy:** LRU cache with TTL based on data volatility (see `src/config/cache.ts`)
 5. **Error Hierarchy:** Custom error classes for different failure scenarios (`src/errors/ApiError.ts`)
-6. **Saved-Location Injection:** `applySavedLocation()` in `src/index.ts` swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
+6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/index.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
 7. **Web Console Pattern:** `src/web/server.ts` spawns `dist/index.js` as a child process and communicates via MCP stdio — the browser UI talks to the **real** MCP server, not a mock
 
 ## Key Features (18 MCP Tools)
@@ -132,37 +132,37 @@ Run with:
 ```bash
 npm run web          # builds TypeScript then starts the server
 ```
-Then open **http://127.0.0.1:8787**.
+Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](docs/WEB_CONSOLE.md)**; keep it in sync when console behavior changes.
 
 ### Architecture
 
-`src/web/server.ts` is an Express HTTP server that:
-1. Spawns `dist/index.js` as a child process (stdin/stdout pipe)
-2. Forwards every `/api/tool` POST as an MCP `tools/call` JSON-RPC message
-3. Returns the raw MCP response to the browser
-4. Serves the `web/index.html` single-page app as a static file
-5. Adds a dedicated `GET /api/climate` endpoint for the climate explorer (see below)
+`src/web/server.ts` is a plain Node `http` server (no framework) that:
+1. Starts `dist/index.js` as a child process and connects to it with the MCP SDK `Client` over `StdioClientTransport`, reconnecting on the next request if it exits
+2. `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
+3. `GET /api/saved-locations` and `GET /api/geocode?q=` read `LocationStore` / call Nominatim directly for the location helper
+4. `GET /api/climate` serves the climate explorer (see below)
+5. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
 
-`web/index.html` is a self-contained SPA (vanilla JS, no build step, ~87 KB):
-- Builds forms dynamically from each tool's JSON schema
+`web/index.html` is a self-contained single page (vanilla JS, no build step, ~87 KB):
+- Builds forms dynamically from each tool's JSON schema; remembers each tool's last inputs in localStorage
 - **Location helpers:** saved-location picker, name search, browser geolocation
-- **Radar view:** RainViewer tiles drawn over a Leaflet basemap (state lines, roads, city labels); drag/zoom; pin at your location
-- **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below)
+- **Radar view:** RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–7); pin at the location
+- **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
 
-Security: the server binds to `127.0.0.1` only and validates `Origin` / `Host` headers to block cross-site requests.
+Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` (CSRF); JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
 
 ### Climate Explorer
 
-`GET /api/climate?latitude=&longitude=&baseline=` returns:
-- Full daily high/low/precipitation series since 1940 (from `OpenMeteoService.getDailyTemperatureRecord`)
-- Per-calendar-day percentile curves (0th–100th in 5% steps) computed by `src/utils/climatology.ts`
-- 30-year baseline means, precipitation normals, and record highs/lows
+`GET /api/climate?latitude=&longitude=&baseline=` returns (one request, ~500 KB):
+- Full daily high/low/precipitation series from 1940-01-01 to two days before today in UTC (so every local day is complete), in °F and inches, from `OpenMeteoService.getDailyTemperatureRecord`
+- Per-calendar-day means and quantiles (0th–100th in 5% steps), precipitation means, and record highs/lows with years, computed by `src/utils/climatology.ts`
+- `baseline` is `YYYY-YYYY` (default `1991-2020`), at least 10 years, 1940 to last year; records always use every year
 
 `src/utils/climatology.ts` computes climatology by:
-- Pooling ±7 days around each calendar day across all baseline years
-- Computing 0–100th percentile in 5% steps using linear interpolation
-- Applying a 5-day rolling average to smooth the curves
-- Handling leap-year day (Feb 29) by including Feb 28 and Mar 1 neighbors
+- Indexing days 0–365 on a leap-year calendar, so Feb 29 is its own slot (59) and every date maps to the same slot each year
+- Pooling ±7 days (15-day window, wrapping the year) around each calendar day across the baseline years; days with fewer than 20 samples get `null`
+- Computing quantiles with linear interpolation, then smoothing each quantile level with a circular ±3-day moving average (levels are smoothed independently, which keeps them ordered, so bands never cross)
+- Records keep the earliest year on ties
 
 `web/index.html` climate explorer features:
 - Gray range bars with high/low ticks over 25–75th and 10–90th percentile bands
@@ -171,11 +171,14 @@ Security: the server binds to `127.0.0.1` only and validates `Origin` / `Host` h
 - Precipitation strip (bars below x-axis)
 - °F / °C toggle
 - Year / month stepping, "last 12 months" mode
-- Drag-to-zoom with click-to-reset
-- Keyboard navigation (arrow keys for day stepping)
+- Selectable normals baseline (1991–2020, 1961–1990, 1951–1980, all years)
+- Drag-to-zoom with double-click to zoom back out
+- Keyboard navigation (←/→ day, Page Up/Down week, Home/End, Esc)
 - Hover tooltip with percentile rank of the hovered day's temperature
 - Pointer-following temperature guide line
-- Summary tiles: warmest day, coldest day, wettest day, total precip for the visible range
+- Summary tiles for the visible range: highs/lows vs normal, warmest, coldest, unusually hot days (>90th pct), unusually cold nights (<10th pct), records set, precipitation vs normal
+- The last year is padded to Dec 31 so its bands continue past the latest data
+- Percentile ranks are interpolated in the page from the server's 21 quantiles (`percentileRank` in the page mirrors the one in `climatology.ts`)
 - Only the chart and tiles redraw on view changes (not the full card)
 
 ### Environment Variables (web console)
@@ -360,7 +363,9 @@ Defense-in-depth: array processing is capped to prevent resource exhaustion:
 
 - Server binds to `127.0.0.1` only (no external exposure)
 - `Origin` and `Host` header validation blocks cross-site requests from pages you visit elsewhere
-- All tool calls pass through the same input validation as the MCP server
+- Request bodies must be `application/json` and are capped at 64 KB; only tools the MCP server lists can be called
+- All tool calls pass through the same input validation as the MCP server; `/api/climate` validates coordinates and the baseline itself
+- The page's CSP allows only inline scripts/styles and same-origin requests
 
 ### No Hardcoded Secrets
 
@@ -418,7 +423,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 | Location searches | 30 days |
 | Weather stations | 24 hours |
 | Climate normals | ∞ (static historical data) |
-| Daily temperature archive (climate explorer) | ∞ (finalized data) |
+| Daily temperature archive (climate explorer) | ∞, keyed by coordinates and end date (so a new day means a new entry) |
 | Forecasts | 2 hours |
 | Marine conditions | 1 hour |
 | Air quality | 1 hour |
@@ -490,7 +495,25 @@ Then update the tool schema: add `location_name` and remove `latitude`/`longitud
 }
 ```
 
-**Smart Updates:** If the alias exists and no location details are provided, only `name` and/or `activities` are updated; all coordinates and metadata are preserved.
+### Implementation Notes
+
+- **Aliases are normalized**: Always lowercased and trimmed for consistency
+- **Max alias length**: 50 characters
+- **Validation**: Coordinates validated on save
+- **Geocoding**: Uses Nominatim service (rate-limited to 1 req/sec)
+- **Error handling**: Helpful messages if location not found or invalid
+- **Thread-safe**: LocationStore uses synchronous file I/O with cache invalidation
+- **Activities (optional)**:
+  - Array of activity strings (e.g., ["boating", "fishing", "hiking"])
+  - Normalized to lowercase and trimmed
+  - Max 50 characters per activity
+  - Helps AI provide contextually relevant weather information
+  - Empty/whitespace-only activities are filtered out
+- **Smart Updates**:
+  - If alias exists AND no location details provided, only update specified fields
+  - Allows updating name/activities without re-specifying coordinates
+  - Example: `save_location(alias="cabin", activities=["boating", "fishing"])` updates activities while preserving all location data
+  - New locations still require location_query or lat/long
 
 ## NOMADS / Model Comparison Features
 
@@ -517,6 +540,15 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 5. Add `location_name` support: either add to `SAVED_LOCATION_TOOLS` or call `resolveLocation()` in handler
 6. Write tests: `tests/unit/` and `tests/integration/`
 7. Update `README.md`, `CHANGELOG.md`, and this file
+
+### Adding External API Integration
+
+1. Create type definitions in `src/types/`
+2. Add client methods to existing service or create new service class
+3. Implement retry logic with exponential backoff
+4. Add error handling using custom error classes
+5. Add caching with appropriate TTL
+6. Write integration tests with mocked responses
 
 ### Adding a Climate Explorer Data Source
 
@@ -559,7 +591,7 @@ npm audit              # No critical vulnerabilities
 - [ ] Security event logging where appropriate
 - [ ] Coordinate redaction in any new log statements
 - [ ] Tests for new functionality (unit + integration)
-- [ ] Documentation updated (README, CHANGELOG, CLAUDE.md)
+- [ ] Documentation updated (README, CHANGELOG, CLAUDE.md and AGENTS.md)
 - [ ] No `console.log` (use logger instead)
 - [ ] No hardcoded values (use `config/`)
 - [ ] Web console forms still work if tool schema changed
@@ -588,6 +620,28 @@ chore: Tooling, dependencies, etc.
 security: Security improvements
 ```
 
+### Commit Message Format
+
+```
+<type>: <short description>
+
+<detailed description>
+
+**Changes:**
+- Bullet point list of changes
+- Implementation details
+
+**Benefits:**
+- Why this change was made
+- What problems it solves
+
+Addresses <issue/doc reference>.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
 ## Useful References
 
 - **MCP Specification:** https://spec.modelcontextprotocol.io/
@@ -600,6 +654,7 @@ security: Security improvements
 - **Project Docs:**
   - `README.md` — User-facing documentation
   - `CHANGELOG.md` — Version history
+  - `docs/WEB_CONSOLE.md` — Web console and climate explorer user guide
   - `docs/development/CODE_REVIEW.md` — Code quality assessment
   - `docs/development/SECURITY_AUDIT_V1.6.md` — Security analysis
 

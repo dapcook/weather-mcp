@@ -429,7 +429,7 @@ export class OpenMeteoService {
     this.validateResponse(response, startDate, endDate, false);
 
     if (CacheConfig.enabled) {
-      // The newest days may still be revised, so don't keep this forever
+      // The key includes the end date, so each new day's record is a new entry
       this.cache.set(cacheKey, response, getHistoricalDataTTL(endDate));
     }
     return response;

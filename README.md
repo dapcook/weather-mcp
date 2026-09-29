@@ -467,7 +467,9 @@ You can also find coordinates manually:
 
 ## Web Console (use the tools without an LLM)
 
-A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result.
+A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result. It also has a **Climate explorer** for browsing any place's daily highs and lows since 1940.
+
+📖 **[Web Console Guide](./docs/WEB_CONSOLE.md)** covers every feature, the climate explorer's controls and chart, configuration, and troubleshooting.
 
 ```bash
 npm run web
@@ -479,7 +481,7 @@ Then open http://127.0.0.1:8787.
 - **Forms come from the tool schemas**, so new tools and parameters appear automatically.
 - **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
 - **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
-- **Climate explorer:** a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
+- **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
 - **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
 - **Local only:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations.
 
@@ -1381,6 +1383,7 @@ To report a security vulnerability, please see our [Security Policy](./SECURITY.
 ### Quick Links
 
 **For Users:**
+- [Web Console Guide](./docs/WEB_CONSOLE.md) - Run tools and explore climate history in a browser, no AI client needed
 - [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup instructions for 8 different MCP clients
 - [Testing Guide](./docs/testing/TESTING_GUIDE.md) - Manual testing procedures
 - [Error Handling](./docs/ERROR_HANDLING.md) - Enhanced error handling features

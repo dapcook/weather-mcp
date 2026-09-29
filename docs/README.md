@@ -7,6 +7,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 ### 📁 Getting Started
 - **[../README.md](../README.md)** - Main project README with installation and usage instructions
 - **[CLIENT_SETUP.md](./CLIENT_SETUP.md)** - Setup guides for 8 different MCP clients
+- **[WEB_CONSOLE.md](./WEB_CONSOLE.md)** - Web console guide: run every tool in a browser and use the climate explorer
 
 ### 📁 Analytics (`analytics/`)
 - **[ANALYTICS_MCP_PLAN.md](./analytics/ANALYTICS_MCP_PLAN.md)** - Privacy-first analytics implementation plan
