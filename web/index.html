@@ -1223,6 +1223,7 @@
   const Q10 = 2, Q25 = 5, Q75 = 15, Q90 = 18;
 
   const cx = {
+    domainCache: { data: null, byKey: new Map() }, // chart y-range per view type, see drawChart
     data: null,       // /api/climate payload
     iso: [],          // ISO date per index (through Dec 31 of the last year)
     dataLen: 0,       // days that have data; later indexes are padding
@@ -1565,10 +1566,12 @@
     const xc = (i) => ml + (i - a + 0.5) * dayW; // day center
     const xl = (i) => ml + (i - a) * dayW;       // day left edge
 
-    // Y domain in display units
+    // Y domain in display units. A whole year or month uses the range of that stretch of the
+    // calendar across EVERY year on record, so stepping between years doesn't rescale the
+    // chart. A dragged zoom or "last 12 months" fits what is on screen.
     let lo = Infinity, hi = -Infinity;
     const take = (v) => { if (v !== null && v !== undefined) { const u = toUnit(v); if (u < lo) lo = u; if (u > hi) hi = u; } };
-    for (let i = a; i < b; i++) {
+    const takeDay = (i) => {
       const s = cx.slot[i];
       take(d.high[i]); take(d.low[i]);
       const qh = clim.high.quantiles[s], ql = clim.low.quantiles[s];
@@ -1578,6 +1581,22 @@
         if (clim.recordHigh[s]) take(clim.recordHigh[s].value);
         if (clim.recordLow[s]) take(clim.recordLow[s].value);
       }
+    };
+    if (cx.range) {
+      for (let i = a; i < b; i++) takeDay(i);
+    } else {
+      const month = cx.mode.month;
+      const key = `${cx.unit}|${month}|${cx.showRecords}`;
+      if (cx.domainCache.data !== d) cx.domainCache = { data: d, byKey: new Map() };
+      let cached = cx.domainCache.byKey.get(key);
+      if (!cached) {
+        for (let i = 0; i < cx.iso.length; i++) {
+          if (month === null || Number(cx.iso[i].slice(5, 7)) - 1 === month) takeDay(i);
+        }
+        cached = [lo, hi];
+        cx.domainCache.byKey.set(key, cached);
+      }
+      [lo, hi] = cached;
     }
     if (!Number.isFinite(lo)) { lo = toUnit(0); hi = toUnit(100); }
     const step = niceStep(hi - lo);

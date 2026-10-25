@@ -113,6 +113,8 @@ The normal range for each date pools the 15 days centered on it (±7 days) acros
 | **Last 12 months** | The 365 days up to the latest data |
 | Drag across the chart | Zoom to the dragged range (at least 3 days) |
 | Double-click the chart | Zoom back out to the whole year |
+
+The temperature axis stays put while you step between years: a whole-year view always spans the lowest to highest values recorded in any year, and a month view the range for that month across all years, so the same year or month always looks the same and years can be compared by eye. A dragged zoom or **Last 12 months** fits the axis to what is on screen.
 | **Records** / **Precipitation** | Show or hide record lines and markers, and the precipitation strip |
 | **°F** / **°C** | Switch temperature units (precipitation switches between inches and millimeters) |
 

@@ -187,6 +187,7 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 - Year / month stepping, "last 12 months" mode
 - Selectable normals baseline (1991–2020, 1961–1990, 1951–1980, all years)
 - Drag-to-zoom with double-click to zoom back out
+- Fixed temperature axis while stepping years: year views use the whole record's range, month views that month's range across all years (cached in `cx.domainCache`); zoom and last-12-months fit the view
 - Keyboard navigation (←/→ day, Page Up/Down week, Home/End, Esc)
 - Hover tooltip with percentile rank of the hovered day's temperature
 - Pointer-following temperature guide line
