@@ -248,6 +248,8 @@ throw new InvalidLocationError('NOAA', 'Coordinates outside US coverage');
 
 **Security:** All errors are sanitized via `formatErrorForUser()` before returning to users.
 
+**Rate limits:** `RateLimitError` takes its help links from `RATE_LIMIT_HELP_LINKS` (one entry per service, enforced by the compiler), so a limit never points at another provider's docs. Pass the upstream's own explanation as the message when it gives one: Open-Meteo reports which limit was hit (per minute, hour or day) in the response's `reason`, which `OpenMeteoService.handleError` shows to the user. Open-Meteo counts requests covering many days as several calls (the climate explorer's 86-year download is one of the heaviest), so retrying within the same minute rarely helps and the service does not.
+
 ### Logging
 
 Use structured logging from `src/utils/logger.ts`:
@@ -307,6 +309,7 @@ tests/
 │   ├── nomads-hrrr-domain.test.ts      # HRRR CONUS bounding box
 │   ├── nomads-grib-loading.test.ts     # GRIB decoder loads lazily; clear error when unavailable (ARM)
 │   ├── request-logger.test.ts          # requests.log honors WEATHER_MCP_DATA_DIR
+│   ├── openmeteo-rate-limit.test.ts    # Open-Meteo 429 handling: its reason, Retry-After, service-specific links (local stub server)
 │   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
 │   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
 │   └── ncei.test.ts                    # NCEI service
@@ -324,7 +327,7 @@ tests/
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
 - **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
-- **Unit vs integration:** `tests/unit` (1,138 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
+- **Unit vs integration:** `tests/unit` (1,159 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -639,7 +642,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
-- **Tests:** 1,200 (1,138 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Tests:** 1,221 (1,159 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 

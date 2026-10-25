@@ -42,6 +42,29 @@ export interface OpenMeteoServiceConfig {
   maxRetries?: number;
 }
 
+/**
+ * Open-Meteo's own explanation of a rate limit (e.g. "Minutely API request limit
+ * exceeded. Please try again in one minute."), cleaned up because it is shown to
+ * users and logged: control characters removed, whitespace collapsed, length capped.
+ */
+function rateLimitReason(data: unknown): string | undefined {
+  if (typeof data !== 'object' || data === null) {
+    return undefined;
+  }
+  const reason = (data as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') {
+    return undefined;
+  }
+  const cleaned = reason.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return cleaned || undefined;
+}
+
+/** Seconds from a Retry-After header (the HTTP-date form is not used by Open-Meteo and is ignored) */
+function retryAfterSeconds(header: unknown): number | undefined {
+  const seconds = Number(Array.isArray(header) ? header[0] : header);
+  return Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600 ? Math.ceil(seconds) : undefined;
+}
+
 export class OpenMeteoService {
   private client: AxiosInstance;
   private geocodingClient: AxiosInstance;
@@ -167,13 +190,26 @@ export class OpenMeteoService {
         );
       }
 
-      // Rate limit error
+      // Rate limit error. Open-Meteo says which limit was hit (per minute, hour or day),
+      // which decides how long to wait, so pass its explanation on.
       if (status === 429) {
+        const reason = rateLimitReason(data);
+        const retryAfter = retryAfterSeconds(error.response.headers?.['retry-after']);
         logger.warn('Rate limit exceeded', {
           service: 'OpenMeteo',
+          reason,
           securityEvent: true
         });
-        throw new RateLimitError('OpenMeteo');
+        const explanation = reason
+          ? `Open-Meteo says: "${reason}"`
+          : 'Open-Meteo is limiting requests from this connection. Wait about a minute and try again.';
+        throw new RateLimitError(
+          'OpenMeteo',
+          `Rate limit exceeded. ${explanation}${retryAfter ? ` Retry after ${retryAfter} seconds.` : ''} ` +
+            'Requests that cover many days count as several calls against its free limits, ' +
+            'so loading a long history can use them up quickly.',
+          retryAfter
+        );
       }
 
       // Server errors

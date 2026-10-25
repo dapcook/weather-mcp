@@ -117,6 +117,33 @@ describe('Custom Error Classes', () => {
       expect(error).toBeInstanceOf(ApiError);
       expect(error).toBeInstanceOf(RateLimitError);
     });
+
+    describe('help links', () => {
+      const services = ['NOAA', 'OpenMeteo', 'NCEI', 'RainViewer', 'Nominatim', 'NOMADS'] as const;
+
+      it.each(services)('should give %s a link, and only links for that service', (service) => {
+        const links = new RateLimitError(service).helpLinks;
+        expect(links.length).toBeGreaterThan(0);
+        expect(links.every((link) => link.startsWith('https://'))).toBe(true);
+      });
+
+      it('should point Open-Meteo errors at Open-Meteo, not at NOAA', () => {
+        const links = new RateLimitError('OpenMeteo').helpLinks;
+        expect(links.every((link) => link.startsWith('https://open-meteo.com/'))).toBe(true);
+      });
+
+      it('should point NOAA errors at weather.gov only', () => {
+        const links = new RateLimitError('NOAA').helpLinks;
+        expect(links.every((link) => link.includes('weather.gov'))).toBe(true);
+      });
+
+      it('should show the service-specific links to the user', () => {
+        const message = new RateLimitError('Nominatim').toUserMessage();
+        expect(message).toContain('operations.osmfoundation.org');
+        expect(message).not.toContain('weather.gov');
+        expect(message).not.toContain('open-meteo.com');
+      });
+    });
   });
 
   describe('ServiceUnavailableError', () => {

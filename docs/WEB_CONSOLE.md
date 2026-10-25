@@ -194,7 +194,8 @@ LOG_LEVEL=0 npm run web
 | A tool is missing from the sidebar | It is disabled by `ENABLED_TOOLS`. |
 | `403 Forbidden host` / `Forbidden origin` | The console only answers to `localhost`, `127.0.0.1` and names listed in `WEB_ALLOWED_HOSTS`. Add the hostname or IP you're using to `WEB_ALLOWED_HOSTS`. |
 | **Use my location** is missing, or Copy falls back | Browsers only allow location access on `https://` or `localhost` pages, so the button is hidden on plain `http://` from another device. Copy uses an older method there that works in most browsers. |
-| Climate explorer takes a long time or fails | The first load of a place downloads its whole record from Open-Meteo. Check your connection; Open-Meteo's free tier also limits daily requests. |
+| Climate explorer takes a long time or fails | The first load of a place downloads its whole record from Open-Meteo (about 6 seconds on a good connection). Check your connection, and see the next row if the message mentions a limit. |
+| **Rate limit exceeded** (Open-Meteo says "Minutely/Hourly/Daily API request limit exceeded") | Open-Meteo's free service limits each connection to 600 calls a minute, 5,000 an hour and 10,000 a day, and counts a request covering many days as several calls. The climate explorer's 86-year download is one of the heaviest, so loading several new places within a minute can hit the per-minute limit. Wait for the time in the message (usually about a minute) and click **Load** again. The server keeps each place in memory after it loads (until it restarts), so places you've already opened come back instantly. |
 
 ## How it works
 

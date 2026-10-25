@@ -48,7 +48,7 @@ npm run test:ui
 
 ```
 tests/
-├── unit/                    36 test files (1,138 tests)
+├── unit/                    37 test files (1,159 tests)
 │   ├── Core Utilities       cache, validation, units, errors
 │   ├── Weather Domain       airQuality, fireWeather, snow, normals, precip-type, climatology
 │   ├── Geospatial          distance, geohash, gribGrid, geography, timezone
