@@ -183,6 +183,21 @@
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
   textarea { font-family: var(--mono); font-size: 12px; min-height: 70px; }
+  /* Same look and height in every browser: native selects ignore padding in Safari, so draw our own chevron */
+  select {
+    -webkit-appearance: none; appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%237d858f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 11px center;
+    background-size: 12px 8px;
+    cursor: pointer;
+  }
+  select:disabled { opacity: .6; cursor: not-allowed; }
+  /* Number fields are typed into, not stepped; the spinner arrows only add clutter */
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
     display: inline-flex; align-items: center; gap: 5px;
@@ -190,7 +205,7 @@
     cursor: pointer; user-select: none; font-size: 13px;
   }
   .chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-  .chip input { margin: 0; }
+  .chip input { margin: 0; accent-color: var(--accent); }
   .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; padding-top: 4px; }
   .switch input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 
@@ -308,15 +323,33 @@
   @media (prefers-color-scheme: dark) {
     :root { --hi: #ff7b72; --lo: #7ea6ff; --bar: #9aa3ad; --precip: #58a6ff; --freeze: #5d6673; --sel: #4c8dff; }
   }
-  .cx-form { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 16px; align-items: end; }
-  .cx-form .field label.name { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-  .cx-place { margin-top: 2px; color: var(--muted); font-size: 13px; }
-  .cx-place strong { color: var(--text); font-size: 15px; }
-  .cx-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 10px; }
-  .cx-toolbar .grow { flex: 1; }
+  /* One panel for choosing the place and settings (the location helper and the coordinate row share it) */
+  .cx-controls { margin-top: 16px; padding: 14px; background: var(--panel-2); border-radius: 10px; display: grid; gap: 12px; }
+  .cx-controls .loc { margin: 0; padding: 0; background: none; border-radius: 0; gap: 8px; }
+  .cx-controls .loc label, .cx-controls .field label.name {
+    display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted);
+  }
+  .cx-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 8px; align-items: end; }
+  .cx-form .cx-load .btn { min-width: 96px; justify-content: center; }
+  @media (max-width: 760px) {
+    .cx-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cx-form .cx-baseline, .cx-form .cx-load { grid-column: 1 / -1; }
+    .cx-form .cx-load .btn { width: 100%; }
+  }
+  /* Place heading: name, then facts about the place, then facts about the data */
+  .cx-place strong { display: block; font-size: 18px; letter-spacing: -.01em; }
+  .cx-meta { margin-top: 2px; color: var(--muted); font-size: 12.5px; }
+  /* Two stable rows: moving through time, then what to draw. Same 34px height throughout */
+  .cx-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 10px; }
+  .cx-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+  .cx-options .toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cx-options .chip { height: 30px; padding: 0 12px; font-size: 12.5px; }
+  .cx-options .seg button { height: 28px; padding: 0 12px; }
   .cx-year { display: inline-flex; align-items: center; gap: 4px; }
-  .cx-year select { width: auto; font-weight: 650; font-size: 15px; padding: 4px 8px; }
-  .cx-arrow { width: 32px; height: 32px; padding: 0; justify-content: center; font-size: 18px; line-height: 1; }
+  .cx-year select { width: auto; height: 34px; font-weight: 650; font-size: 15px; padding: 0 30px 0 12px; }
+  .cx-arrow { width: 34px; height: 34px; padding: 0; justify-content: center; font-size: 18px; line-height: 1; }
+  .cx-toolbar .btn.small { height: 34px; padding: 0 12px; font-size: 12.5px; }
+  .cx-toolbar .seg button { height: 32px; padding: 0 10px; }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
   .seg button { border: 0; background: var(--panel); padding: 4px 9px; cursor: pointer; font-size: 12.5px; }
   .seg button + button { border-left: 1px solid var(--border); }
@@ -734,8 +767,9 @@
         setFieldValue('latitude', '');
         setFieldValue('longitude', '');
       } else {
-        setFieldValue('latitude', loc.latitude);
-        setFieldValue('longitude', loc.longitude);
+        // ~11 m is plenty; the stored values can run to 7 decimals
+        setFieldValue('latitude', Number(Number(loc.latitude).toFixed(4)));
+        setFieldValue('longitude', Number(Number(loc.longitude).toFixed(4)));
       }
     });
 
@@ -1343,7 +1377,8 @@
 
     const numField = (key, label, value) => {
       const input = el('input', { id: `cx-${key.slice(0, 3)}`, name: key, type: 'number', step: 'any' });
-      if (value !== undefined) input.value = value;
+      // 4 decimals (~11 m); a remembered or picked place can carry 7
+      if (Number.isFinite(Number(value)) && value !== null && value !== '') input.value = Number(Number(value).toFixed(4));
       input.addEventListener('input', () => { cx.place = null; });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadClimate(); });
       return el('div', { class: 'field', 'data-key': key, 'data-kind': 'number' },
@@ -1366,12 +1401,13 @@
           'pooling ±7 days around each date. Faint lines are the averages; dotted lines are the record high and low for each date since 1940. ' +
           'Drag across the chart to zoom, double-click to zoom back out, and use the arrow keys to step through days. ' +
           'Values are ERA5 reanalysis (a ~25 km grid average), so they can differ by a few degrees from an airport station.' }))),
-      helper,
-      el('div', { class: 'cx-form' },
-        numField('latitude', 'Latitude', saved.latitude),
-        numField('longitude', 'Longitude', saved.longitude),
-        el('div', { class: 'field' }, el('label', { class: 'name', for: 'cx-baseline', text: 'Normals baseline' }), baselineSelect),
-        el('div', { class: 'field' }, el('button', { class: 'btn primary', type: 'button', id: 'cx-load', onclick: loadClimate }, el('span', { text: 'Load' })))),
+      el('div', { class: 'cx-controls' },
+        helper,
+        el('div', { class: 'cx-form' },
+          numField('latitude', 'Latitude', saved.latitude),
+          numField('longitude', 'Longitude', saved.longitude),
+          el('div', { class: 'field cx-baseline' }, el('label', { class: 'name', for: 'cx-baseline', text: 'Normals baseline' }), baselineSelect),
+          el('div', { class: 'field cx-load' }, el('button', { class: 'btn primary', type: 'button', id: 'cx-load', onclick: loadClimate }, el('span', { text: 'Load' }))))),
       el('div', { id: 'cx-status' }),
       el('div', { id: 'cx-body' }));
 
@@ -1407,7 +1443,7 @@
       const box = el('input', { type: 'checkbox' });
       box.checked = cx[key];
       box.addEventListener('change', () => { cx[key] = box.checked; store.set(storeKey, box.checked); updateClimate(); });
-      return el('label', { class: 'switch' }, box, el('span', { text: label }));
+      return el('label', { class: 'chip' }, box, el('span', { text: label }));
     };
 
     const lastN = el('button', { class: 'btn small', type: 'button', text: 'Last 12 months', onclick: () => {
@@ -1429,15 +1465,16 @@
     body.replaceChildren(
       el('section', { class: 'card', style: 'margin-top:16px' },
         el('div', { class: 'cx-place' },
-          el('strong', { text: cx.place && cx.place.label ? cx.place.label : coord }), ' · ',
-          cx.place && cx.place.label ? `${coord} · ` : '',
-          `${Math.round(loc.elevation)} m · ${loc.timezone} · data ${fmtDate(cx.data.start)} – ${fmtDate(cx.data.end)} · normals ${clim.baseline.startYear}–${clim.baseline.endYear}`),
+          el('strong', { text: cx.place && cx.place.label ? cx.place.label : coord }),
+          el('div', { class: 'cx-meta', text: `${cx.place && cx.place.label ? `${coord} · ` : ''}${Math.round(loc.elevation)} m · ${loc.timezone}` }),
+          el('div', { class: 'cx-meta', text: `Data ${fmtDate(cx.data.start)} – ${fmtDate(cx.data.end)} · Normals ${clim.baseline.startYear}–${clim.baseline.endYear}` })),
         el('div', { class: 'cx-toolbar' },
           el('span', { class: 'cx-year' }, prev, yearSelect, next),
-          monthSeg, lastN,
-          el('span', { class: 'grow' }),
-          toggle('Records', 'showRecords', 'weather-console:climate:records'),
-          toggle('Precipitation', 'showPrecip', 'weather-console:climate:precip'),
+          monthSeg, lastN),
+        el('div', { class: 'cx-options' },
+          el('div', { class: 'toggles' },
+            toggle('Records', 'showRecords', 'weather-console:climate:records'),
+            toggle('Precipitation', 'showPrecip', 'weather-console:climate:precip')),
           unitSeg),
         chart,
         el('div', { class: 'cx-legend' },

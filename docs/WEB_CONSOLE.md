@@ -69,7 +69,7 @@ Open **Climate explorer** under **Explorers** at the top of the sidebar (or go t
 
 ### Loading a place
 
-Use the location helper (saved location, place search, or your location), or type a latitude and longitude and click **Load**. Picking a place loads it straight away.
+The controls sit in one panel. Use the location helper at the top (saved location, place search, or your location), or type a latitude and longitude below it and click **Load**. Picking a place loads it straight away, and fills in its coordinates to four decimal places (about 11 m).
 
 The first load for a place takes a few seconds: it downloads every day since 1940 (about 31,000 days) in one request. After that, changing years, months, zoom, and units is instant, because nothing more is downloaded. The console remembers the last place you loaded.
 
@@ -83,7 +83,7 @@ The first load for a place takes a few seconds: it downloads every day since 194
 
 Changing the baseline reloads the place.
 
-The line under the title shows the place's coordinates, grid elevation, time zone, the dates covered, and the baseline in use.
+Under the title, one line gives the place's coordinates, grid elevation and time zone, and a second gives the dates covered and the baseline in use.
 
 ### Reading the chart
 

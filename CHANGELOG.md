@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Request Lifecycle Logging** - Added structured logging of MCP request start/end/duration via `src/utils/requestLogger.ts`
 
 ### Changed
+- **Climate Explorer Layout** - the controls are now one panel instead of three loose pieces, and the chart card has a clearer heading and toolbar:
+  - dropdowns are drawn the same way in every browser (macOS Safari/Chrome ignored their padding, so they came out shorter than the text fields beside them and the labels sat at different heights), which also tidies the other tools' forms
+  - number fields lose their spinner arrows, and picked or remembered coordinates show 4 decimals instead of 7
+  - the normals-baseline dropdown is wide enough to read in full, and Load aligns with it
+  - the place heading puts the place, then its coordinates/elevation/time zone, then the data range and normals on separate lines
+  - the toolbar is two stable rows (time navigation, then Records/Precipitation chips and °F/°C) with matching control heights, instead of wrapping unpredictably
+  - layout checked at desktop, tablet and phone widths and in dark mode
 - **Documentation refresh** - README, CLAUDE.md/AGENTS.md, SECURITY.md, and the docs index brought in line with the code: test counts (1,196: 1,134 unit, 62 integration), the project structure, the full list of data sources, dependency counts, the supported-versions table, and the network-exposed mode (HTTP `/mcp`, web console, Docker). Removed claims that no longer held ("zero known vulnerabilities", "3 runtime dependencies", "all external calls use HTTPS only" (the lightning feed uses plain MQTT), "no personal data is stored" (saved locations are)). Documented the environment variables the default-value tests read, and `LOG_PII` in `.env.example`
 
 ### Fixed
