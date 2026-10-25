@@ -15,7 +15,7 @@ Docker + Docker Compose, SD-card storage.
 | 2 | One server process for LLMs (`/mcp`) and the console | Done |
 | 3 | Docker packaging, tested on a Mac | Done |
 | 4 | Deploy to the Pi | Done |
-| 5 | Optional: HTTPS/remote access, friendly name, dashboard link | In progress (Tailscale installed on the Pi; sign-in and HTTPS pending) |
+| 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Dropped (the Pi became unavailable; Tailscale was installed but never signed in) |
 | 6 | Docs and PR | Done |
 
 Placeholders used below: `<pi-host>` (e.g. `raspberrypi.local`), `<pi-ip>` (its LAN address),
@@ -243,6 +243,26 @@ it is published for `cpu: wasm32`.
 - Then: add the Pi's `*.ts.net` name to `WEB_ALLOWED_HOSTS`, run
   `tailscale serve --bg --https=8443 http://127.0.0.1:3003`, and verify the certificate and
   the token check. Never use `tailscale funnel` (public internet).
+
+## Afterwards: running on the developer's own computer
+
+The Raspberry Pi became unavailable, so the same image and compose file were moved to a local
+Docker Desktop (Apple Silicon, `linux/arm64`, the same platform the Pi used).
+
+- **Compose additions:** `WEATHER_MCP_BIND` (default `0.0.0.0`; `127.0.0.1` publishes the port
+  on this computer only) and `WEATHER_MCP_DATA` (host folder for saved locations, default
+  `./data`). The local `.env` sets `127.0.0.1` and points the data folder at `~/.weather-mcp`,
+  so the existing saved locations carried over with no copying, are shared with a local stdio
+  install, and stay out of the cloud-synced project folder.
+- **Fix found on the way:** `requests.log` was hard-wired to `~/.weather-mcp`, so every tool call
+  in a container warned "Failed to write request lifecycle log" and kept nothing. It now honors
+  `WEATHER_MCP_DATA_DIR` (regression test `tests/unit/request-logger.test.ts`).
+- **Verified:** healthy container on `127.0.0.1:3003` only (a request to the machine's LAN address
+  is refused; a wrong `Host` gets 403); 401 without the token; 18 tools over `/mcp`; saved
+  location, current conditions, forecast and a GFS + HRRR comparison (WebAssembly GRIB decoder,
+  about 14 s); stdio via `docker exec`; the request log lands in the data folder with no write
+  warnings; Claude Code and Claude Desktop (via `mcp-remote`, no `--allow-http` needed for
+  `localhost`) both connect to it.
 
 ## Phase 6: Docs and PR
 

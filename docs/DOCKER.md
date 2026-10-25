@@ -1,4 +1,4 @@
-# Running in Docker (and on a Raspberry Pi)
+# Running in Docker (on your computer or a Raspberry Pi)
 
 One container runs the whole Weather MCP server:
 
@@ -8,9 +8,28 @@ One container runs the whole Weather MCP server:
 
 Saved locations live in a folder on the host, so they survive rebuilds and updates.
 
+You can run it on **your own computer** (Docker Desktop on a Mac or Windows PC, or Docker on Linux) or on a **small always-on machine such as a Raspberry Pi** that every device on your network shares. The steps are the same; the [next section](#on-your-own-computer-only) covers the settings that keep it private to one computer.
+
 The image builds for both `linux/amd64` and `linux/arm64`. It has been tested on Apple Silicon (which runs the same `arm64` containers) and on a **Raspberry Pi 5 (8 GB) with 64-bit Raspberry Pi OS (Debian 12)**. A Pi 4 with a 64-bit OS should work too; a 32-bit OS will not.
 
 > **Home network only.** Don't expose this to the internet. It serves plain `http://`, and the access token is the only lock. See [Security](#security).
+
+## On your own computer only
+
+If only your own computer will use it, three settings keep it private and tidy. Put them in `.env`:
+
+```bash
+WEATHER_MCP_TOKEN=...                 # openssl rand -hex 32
+WEATHER_MCP_BIND=127.0.0.1            # publish the port on this computer only; other devices can't connect
+WEATHER_MCP_DATA=/Users/you/.weather-mcp   # optional: keep saved locations outside the project folder
+```
+
+Then follow the [Quick start](#quick-start). The console is at `http://localhost:3003` and the MCP endpoint at `http://localhost:3003/mcp`. `localhost` is always allowed, so you don't need `WEB_ALLOWED_HOSTS`.
+
+- **Why `WEATHER_MCP_BIND=127.0.0.1`:** without it the port is published on every network interface (what you want on a Pi, not on a laptop at a coffee shop). With it, a connection from another device is refused outright.
+- **Why `WEATHER_MCP_DATA`:** saved locations can reveal where you live. If the project folder is synced to a cloud service (iCloud Drive, Dropbox, OneDrive), the default `./data` folder would be synced too. Point it at a folder outside the project, such as `~/.weather-mcp`, written as an absolute path (no `~`). That is also where the local (non-Docker) server keeps its saved locations, so both setups share them, and the container adds a `requests.log` there.
+- **`.env` holds your token.** It is excluded from git, but a cloud-synced project folder still syncs it. If that matters to you, keep the project outside the synced folder.
+- **Start with Docker Desktop.** The container restarts automatically (`unless-stopped`) whenever Docker is running, so turn on Docker Desktop's *Start Docker Desktop when you sign in* setting. The weather tools are unavailable in your AI clients whenever Docker isn't running.
 
 ## Requirements
 
@@ -85,6 +104,8 @@ Settings go in `.env` (see `.env.example` for the full list, with comments). Aft
 | `WEATHER_MCP_TOKEN` | *(none)* | Required in practice. Clients send it as `Authorization: Bearer <token>`. At least 16 characters. |
 | `WEB_ALLOWED_HOSTS` | *(none)* | Hostnames and IPs you'll use, comma-separated. Requests using any other name get `403`. `localhost` is always allowed. |
 | `WEATHER_MCP_PORT` | `3003` | The port published on the Docker host. |
+| `WEATHER_MCP_BIND` | `0.0.0.0` | Address the published port listens on. `127.0.0.1` = this computer only; `0.0.0.0` = every network interface (needed to reach it from other devices). |
+| `WEATHER_MCP_DATA` | `./data` | Host folder for saved locations and the request log. Use an absolute path. |
 | `ENABLED_TOOLS` | `all` | Which tools are exposed (`basic`, `standard`, `full`, `all`, or a list). |
 | `LOG_LEVEL` | `1` | `0` debug, `1` info, `2` warn, `3` error. |
 | `NCEI_API_TOKEN` | *(none)* | Optional; enables official NOAA climate normals for US locations. |
@@ -115,12 +136,12 @@ sed -i "s/^WEATHER_MCP_TOKEN=.*/WEATHER_MCP_TOKEN=$(openssl rand -hex 32)/" .env
 
 ## Saved locations and backups
 
-Saved locations are stored in `./data/locations.json` on the host, next to `docker-compose.yml`.
+Saved locations are stored in `locations.json` in the data folder on the host: `./data` next to `docker-compose.yml` by default, or wherever `WEATHER_MCP_DATA` points.
 
 - **Back up:** copy that file.
 - **Move from another machine:** copy its `locations.json` into `./data/` before starting, or after stopping the container. If you're switching from a local setup, the file is `~/.weather-mcp/locations.json`.
 - **Only one copy is used.** Once the container is the one your clients use, locations saved on your other machine won't appear here.
-- **Permissions:** the container runs as user ID 1000 (`node`). On a Raspberry Pi the first user is normally 1000, so `mkdir -p data` as that user is enough. If your user is different, run `sudo chown 1000:1000 data`.
+- **Permissions:** the container runs as user ID 1000 (`node`). On a Raspberry Pi the first user is normally 1000, so `mkdir -p data` as that user is enough. If your user is different on Linux, run `sudo chown 1000:1000 data`. Docker Desktop on macOS and Windows maps file ownership for you, so no change is needed there.
 
 ## Security
 
@@ -154,7 +175,7 @@ Saved locations are stored in `./data/locations.json` on the host, next to `dock
 
 ## Going back to a local setup
 
-Point your clients back at the local command (`node /path/to/weather-mcp/dist/index.js`, or `npx -y @dangahagan/weather-mcp@latest`; see the [Client Setup Guide](./CLIENT_SETUP.md)) and, if you like, `docker compose down`. Your `./data` folder stays where it is.
+Point your clients back at the local command (`node /path/to/weather-mcp/dist/index.js`, or `npx -y @dangahagan/weather-mcp@latest`; see the [Client Setup Guide](./CLIENT_SETUP.md)) and, if you like, `docker compose down`. Your data folder stays where it is, and if it is `~/.weather-mcp` the local server picks up the same saved locations.
 
 ## How it works
 

@@ -1,11 +1,14 @@
 # Weather MCP server: HTTP /mcp endpoint for AI clients + web console.
 # See docs/planning/DOCKER_DEPLOYMENT_PLAN.md
 #
-#   cp .env.example .env      # then set WEATHER_MCP_TOKEN and WEB_ALLOWED_HOSTS
+#   cp .env.example .env      # then set WEATHER_MCP_TOKEN (and WEB_ALLOWED_HOSTS if used from other devices)
 #   mkdir -p data             # before the first start, so it's owned by you (uid 1000), not root
 #   docker compose up -d --build
 #
 # Console:  http://<host>:3003     MCP:  http://<host>:3003/mcp     Health:  /health
+#
+# Only on your own computer? Set WEATHER_MCP_BIND=127.0.0.1 in .env so nothing else on the
+# network can reach it, and (optionally) WEATHER_MCP_DATA to a folder outside this project.
 
 services:
   weather-mcp:
@@ -24,12 +27,13 @@ services:
       WEB_HOST: 0.0.0.0
       WEB_PORT: "3003"
       WEATHER_MCP_DATA_DIR: /app/data
+    # WEATHER_MCP_BIND: 127.0.0.1 = this computer only; 0.0.0.0 (default) = anything that can reach it
     ports:
-      - "${WEATHER_MCP_PORT:-3003}:3003"
+      - "${WEATHER_MCP_BIND:-0.0.0.0}:${WEATHER_MCP_PORT:-3003}:3003"
 
-    # Saved locations
+    # Saved locations and request log (WEATHER_MCP_DATA defaults to ./data next to this file)
     volumes:
-      - ./data:/app/data
+      - ${WEATHER_MCP_DATA:-./data}:/app/data
 
     # Resource and log limits (logs live on the SD card on a Raspberry Pi)
     mem_limit: 768m

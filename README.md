@@ -488,7 +488,7 @@ Then open http://127.0.0.1:8787.
 
 ## Running in Docker (or on a Raspberry Pi)
 
-Run the server once on an always-on machine, such as a Raspberry Pi, and use it from every device on your network: AI clients connect to its `/mcp` endpoint, and you open the [web console](#web-console-use-the-tools-without-an-llm) in a browser. One container serves both, and saved locations are kept in a folder on the host.
+Run the server once in a container, on your own computer or on an always-on machine such as a Raspberry Pi, and use it from every AI client (and, on a shared machine, every device on your network): AI clients connect to its `/mcp` endpoint, and you open the [web console](#web-console-use-the-tools-without-an-llm) in a browser. One container serves both, and saved locations are kept in a folder on the host.
 
 ```bash
 git clone https://github.com/dapcook/weather-mcp.git && cd weather-mcp
@@ -500,6 +500,7 @@ docker compose up -d --build
 Then open `http://<host>:3003` and point your AI client at `http://<host>:3003/mcp`.
 
 - The image builds for `linux/amd64` and `linux/arm64`; it is tested on Apple Silicon and a Raspberry Pi 5 (64-bit OS).
+- Only on your own computer? Set `WEATHER_MCP_BIND=127.0.0.1` in `.env` so other devices can't connect (see [On your own computer only](./docs/DOCKER.md#on-your-own-computer-only)).
 - The container is locked down (non-root, read-only filesystem, no extra capabilities) and requires a token for `/mcp` and the console's API. It's meant for a home network, not the internet.
 - Setup, settings, updating, backups, security, and troubleshooting are in **[docs/DOCKER.md](./docs/DOCKER.md)**; copy-paste client configs for Claude Desktop, Claude Code, Cursor, and VS Code are in [Connecting to a remote server](./docs/CLIENT_SETUP.md#connecting-to-a-remote-server-http).
 
@@ -1173,13 +1174,13 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,196 tests** across unit (1,134 tests in 35 files) and integration (62 tests in 4 files) suites
+- **1,200 tests** across unit (1,138 tests in 36 files) and integration (62 tests in 4 files) suites
 - **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
 - **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
 - **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (1,134 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Unit Tests** (1,138 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
 - **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
@@ -1247,7 +1248,7 @@ weather-mcp/
 ├── web/
 │   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # 1,134 tests, no network
+│   ├── unit/                    # 1,138 tests, no network
 │   └── integration/             # 62 tests, live APIs
 ├── docs/                        # Documentation (start at docs/README.md)
 ├── Dockerfile, docker-compose.yml, .env.example
@@ -1383,7 +1384,7 @@ This project takes security seriously and implements multiple layers of protecti
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (1,196 tests) with a 100% coverage target on critical utilities
+- Comprehensive test suite (1,200 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 

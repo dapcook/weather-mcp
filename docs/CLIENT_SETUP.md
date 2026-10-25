@@ -357,7 +357,9 @@ Postman can integrate with existing MCP config files from Claude, VS Code, and o
 
 ## Connecting to a Remote Server (HTTP)
 
-The setups above launch the server on the same computer as your AI client. You can instead run it once on another machine, such as a Raspberry Pi (see **[Running in Docker](./DOCKER.md)**), and connect every client to it over your network.
+The setups above launch the server as a separate process for each client. You can instead run it once in Docker, either on **your own computer** or on **another machine such as a Raspberry Pi** (see **[Running in Docker](./DOCKER.md)**), and connect every client to that one server.
+
+**Examples below use `raspberrypi.local`. If the container runs on the same computer as your client, use `localhost` instead (for example `http://localhost:3003/mcp`).** With `localhost`, Claude Desktop's `mcp-remote` bridge doesn't need `--allow-http`.
 
 Every client needs the same three things:
 
