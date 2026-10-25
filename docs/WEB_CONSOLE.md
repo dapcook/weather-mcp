@@ -173,7 +173,7 @@ Set these environment variables before `npm run web`:
 | `WEB_HOST` | `127.0.0.1` | Address to listen on. `0.0.0.0` makes it reachable from other devices (e.g. in a Docker container); pair it with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` |
 | `WEB_ALLOWED_HOSTS` | *(none)* | Extra hostnames or IPs people and AI clients use to reach it, comma-separated, e.g. `raspberrypi.local,192.168.1.20`. `localhost`, `127.0.0.1` and `::1` are always allowed |
 | `WEATHER_MCP_TOKEN` | *(none)* | If set (16+ characters; `openssl rand -hex 32`), the console API and `/mcp` require it. The console asks for it once in a sign-in box and remembers it in that browser |
-| `WEATHER_MCP_DATA_DIR` | `~/.weather-mcp` | Folder for saved locations (`locations.json`) |
+| `WEATHER_MCP_DATA_DIR` | `~/.weather-mcp` | Data folder: saved locations (`locations.json`), `requests.log`, and saved climate records (`climate/`) |
 | `ENABLED_TOOLS` | `all` | Which tools are exposed; same presets and names as the MCP server (see [Tool Selection](../README.md#tool-selection-new-in-v140)) |
 | `LOG_LEVEL` | `1` | `0` for debug logging, which is useful when a tool misbehaves |
 
@@ -219,6 +219,7 @@ HTTP endpoints (the `/api/*` ones are for the page, not meant as a public API):
 `/api/climate` returns everything the explorer needs in one response (about 500 KB):
 
 - `high`, `low`, and `precipitation`: daily series since 1940 in °F and inches, starting at `start` and ending at `end`.
+- `refreshNote` (only sometimes present): set when a saved record could not be brought up to date, for example because Open-Meteo is rate limiting. The page shows it under the place name.
 - `climatology`, built by `src/utils/climatology.ts`, with one entry for each calendar day. Days are indexed 0–365 on a leap-year calendar, so February 29 has its own slot:
   - `high` / `low`: the mean, and quantiles from the 0th to the 100th percentile in 5% steps
   - `precipitationMean`

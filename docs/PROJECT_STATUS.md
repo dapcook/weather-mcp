@@ -1,5 +1,9 @@
 # Weather MCP Server - Project Status
 
+> **Dated snapshot.** The sections below describe the project as completed in November 2025 and are not rewritten. For what is current, see the [Changelog](../CHANGELOG.md) ([Unreleased] section), the [To Do list](./TODO.md), and the [README](../README.md).
+>
+> **As of 2026-10-25:** 18 MCP tools; a web console with a climate explorer (`npm run web`); an HTTP `/mcp` endpoint with token, Host and Origin checks; a Docker image and compose file (tested on `linux/arm64`); climate records saved on disk; 1,231 unit tests passing and 62 integration tests (live APIs, not run on the current branch). Work in progress is on `feat/docker-deployment` ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)). Known open items: dependency security advisories, untested `linux/amd64` image, a few small cleanups, all in the [To Do list](./TODO.md).
+
 ## 🎉 Project Complete!
 
 All core phases of the Weather MCP Server have been successfully completed. The project is fully functional, tested, documented, and ready for GitHub publication.

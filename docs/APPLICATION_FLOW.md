@@ -120,6 +120,7 @@ Examples:
 - `ModelComparisonService` for side-by-side GFS/NAM/HRRR/ECMWF-proxy daily alignment.
 - `NominatimService` and `GeocodingService` for location search.
 - `LocationStore` for saved-location persistence.
+- `DailyRecordStore` for the climate explorer's saved daily records (see section 8).
 
 ## 5.4 Utilities and Error Model
 
@@ -164,7 +165,7 @@ This keeps one tool interface while optimizing regional data quality.
 
 Saved locations are persisted to:
 
-- `~/.weather-mcp/locations.json`
+- `~/.weather-mcp/locations.json` (or `locations.json` in `WEATHER_MCP_DATA_DIR`, e.g. `/app/data` in the Docker container)
 
 Key components:
 
@@ -194,6 +195,16 @@ Highlights:
   - Historical older data: Infinity
 - `CACHE_ENABLED` can disable caching globally.
 - `API_TIMEOUT_MS` and `CACHE_MAX_SIZE` are validated with bounds.
+
+### Climate explorer request (`GET /api/climate`)
+
+The one request that needs more than the TTL cache. `src/web/app.ts` asks `OpenMeteoService.getDailyTemperatureRecordWithStatus()` for the daily record from 1940-01-01 to two days ago, then computes percentile curves with `src/utils/climatology.ts` and returns them with the series.
+
+1. Memory: a byte-limited LRU cache (`src/utils/byteBudgetCache.ts`, 96 MiB) keyed by coordinates and end date.
+2. Disk: `DailyRecordStore` (`<data dir>/climate/`, one gzip file per place, 128 MiB limit). Survives restarts.
+3. Open-Meteo: a full download (about 680 calls of the free allowance), or, for a saved record that is behind, only its last 100 days plus new days (about 2 calls).
+
+If the top-up fails the saved record is returned with `refreshNote` set (the explorer shows it under the place name) and is not kept in memory, so the next request retries. Concurrent requests for one place share one download. Details and rationale: [Caching Strategy](../.github/CACHING.md#climate-explorer-records).
 
 ## 9. Error Handling and Reliability
 

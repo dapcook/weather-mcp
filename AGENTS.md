@@ -201,7 +201,7 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 - `WEB_PORT` — HTTP port (default `8787`)
 - `WEB_ALLOWED_HOSTS` — extra hostnames/IPs clients may use, comma-separated (loopback names always allowed)
 - `WEATHER_MCP_TOKEN` — if set (16+ chars), `/mcp` and `/api/*` require `Authorization: Bearer <token>`; the console shows a sign-in box
-- `WEATHER_MCP_DATA_DIR` — folder for `locations.json` (default `~/.weather-mcp`; also honored by the stdio entry)
+- `WEATHER_MCP_DATA_DIR` — data folder: `locations.json`, `requests.log`, and the climate explorer's saved records in `climate/` (default `~/.weather-mcp`; also honored by the stdio entry)
 - `ENABLED_TOOLS` — which MCP tools to expose (defaults to `all` in web mode)
 
 ### Docker
@@ -211,7 +211,7 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 - The `deps` stage installs `@mattnucc/gribberish-wasm32-wasi` only when the native decoder won't load (e.g. `linux/arm64`); keep its version pinned to `@mattnucc/gribberish`
 - The container is hardened (non-root `node` user, read-only root filesystem, `cap_drop: ALL`); anything that writes files must use `WEATHER_MCP_DATA_DIR` (`/app/data`) or `/tmp`
 - stdio access: `docker exec -i weather-mcp node dist/index.js`
-- Compose settings (in `.env`): `WEATHER_MCP_BIND` (`127.0.0.1` for this-computer-only, default `0.0.0.0`), `WEATHER_MCP_PORT`, `WEATHER_MCP_DATA` (host folder for saved locations and `requests.log`; default `./data`; use an absolute path, e.g. `~/.weather-mcp` expanded, to keep personal coordinates out of a cloud-synced project folder)
+- Compose settings (in `.env`): `WEATHER_MCP_BIND` (`127.0.0.1` for this-computer-only, default `0.0.0.0`), `WEATHER_MCP_PORT`, `WEATHER_MCP_DATA` (host folder for saved locations, `requests.log` and the climate explorer's `climate/` records; default `./data`; use an absolute path, e.g. `~/.weather-mcp` expanded, to keep personal coordinates out of a cloud-synced project folder)
 - Everything that writes files honors `WEATHER_MCP_DATA_DIR`: saved locations, the analytics salt, `requests.log`, and the climate explorer's saved records (`climate/`)
 
 ## Development Guidelines
@@ -448,7 +448,7 @@ WEB_HOST=127.0.0.1               # Listen address (0.0.0.0 in a container)
 WEB_PORT=8787                    # Port (default: 8787)
 WEB_ALLOWED_HOSTS=               # Extra hostnames/IPs, e.g. raspberrypi.local,192.168.1.20
 WEATHER_MCP_TOKEN=               # Bearer token for /mcp and /api/* (openssl rand -hex 32)
-WEATHER_MCP_DATA_DIR=            # Saved-locations folder (default: ~/.weather-mcp)
+WEATHER_MCP_DATA_DIR=            # Data folder: saved locations, request log, climate records (default: ~/.weather-mcp)
 ```
 
 ### Tool Presets
@@ -649,7 +649,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 
 - **Version:** 1.7.0 + Unreleased features (see CHANGELOG.md [Unreleased] section)
 - **Status:** Production Ready ✅
-- **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
+- **Unreleased additions:** Web console, climate explorer (records saved on disk), Docker deployment, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
 - **Tests:** 1,293 (1,231 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
@@ -706,6 +706,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
   - `CHANGELOG.md` — Version history
   - `docs/WEB_CONSOLE.md` — Web console and climate explorer user guide
   - `docs/DOCKER.md` — Running in Docker / on a Raspberry Pi
+  - `docs/TODO.md` — Open work in priority order; update it when you finish or find something (it is linked from the README and docs index)
+  - `docs/APPLICATION_FLOW.md` — Runtime flow, including the climate explorer request
+  - `.github/CACHING.md` — Caching layers, including climate records saved on disk
+  - `docs/README.md` — Index of every document; add new docs there and in the README's Documentation section
   - `docs/development/CODE_REVIEW.md` — Code quality assessment
   - `docs/development/SECURITY_AUDIT_V1.6.md` — Security analysis
 
@@ -717,6 +721,6 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-**Last Updated:** 2026-09-29 (Unreleased — web console + climate explorer, NOMADS/HRRR model forecasts, precipitation type, request lifecycle logging, NAM grid/timezone fixes)
+**Last Updated:** 2026-10-25 (Unreleased — web console + climate explorer, climate records saved on disk, Docker deployment, NOMADS/HRRR model forecasts, precipitation type, request lifecycle logging, NAM grid/timezone fixes)
 
 This document should be updated whenever major architectural changes are made or new patterns are introduced.

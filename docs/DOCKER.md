@@ -105,7 +105,7 @@ Settings go in `.env` (see `.env.example` for the full list, with comments). Aft
 | `WEB_ALLOWED_HOSTS` | *(none)* | Hostnames and IPs you'll use, comma-separated. Requests using any other name get `403`. `localhost` is always allowed. |
 | `WEATHER_MCP_PORT` | `3003` | The port published on the Docker host. |
 | `WEATHER_MCP_BIND` | `0.0.0.0` | Address the published port listens on. `127.0.0.1` = this computer only; `0.0.0.0` = every network interface (needed to reach it from other devices). |
-| `WEATHER_MCP_DATA` | `./data` | Host folder for saved locations and the request log. Use an absolute path. |
+| `WEATHER_MCP_DATA` | `./data` | Host folder for saved locations, the request log, and the climate explorer's saved records (`climate/`). Use an absolute path. |
 | `ENABLED_TOOLS` | `all` | Which tools are exposed (`basic`, `standard`, `full`, `all`, or a list). |
 | `LOG_LEVEL` | `1` | `0` debug, `1` info, `2` warn, `3` error. |
 | `NCEI_API_TOKEN` | *(none)* | Optional; enables official NOAA climate normals for US locations. |

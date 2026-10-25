@@ -17,6 +17,9 @@ Docker + Docker Compose, SD-card storage.
 | 4 | Deploy to the Pi | Done |
 | 5 | Optional: HTTPS/remote access, friendly name, dashboard link | Dropped (the Pi became unavailable; Tailscale was installed but never signed in) |
 | 6 | Docs and PR | Done |
+| 7 | Afterwards, on the developer's computer: rate-limit messages, bounded memory, climate records saved on disk | Done (see "Afterwards" sections below) |
+
+Open follow-ups (dependency upgrade, `linux/amd64` build, integration tests) are tracked in [../TODO.md](../TODO.md).
 
 Placeholders used below: `<pi-host>` (e.g. `raspberrypi.local`), `<pi-ip>` (its LAN address),
 `<pi-user>` (the login account on the Pi).
@@ -263,6 +266,14 @@ Docker Desktop (Apple Silicon, `linux/arm64`, the same platform the Pi used).
   about 14 s); stdio via `docker exec`; the request log lands in the data folder with no write
   warnings; Claude Code and Claude Desktop (via `mcp-remote`, no `--allow-http` needed for
   `localhost`) both connect to it.
+
+### Rate limits, memory and the disk cache
+
+Running the climate explorer in the container exposed three problems, all fixed on this branch:
+
+- **Rate-limit message:** an Open-Meteo 429 said "retry in a few seconds" and linked NOAA's docs, while the real limits are per minute (600), hour (5,000) and day (10,000). The message now passes on Open-Meteo's own `reason`.
+- **Unbounded memory:** every place opened stayed in a cache limited by entry count (1,000), about 2 MB each once parsed, so enough places could outgrow the 768 MB container limit. Records now live in a byte-limited cache (96 MiB). Measured with garbage collection forced over 100 places: 195 MB and rising before, flat 96 MiB after. (An earlier note here and in the PR said 17 MB per place; that counted temporary memory and was wrong.)
+- **Restarts repeat the download:** one 86-year record costs about 680 of Open-Meteo's free calls (about 7 new places an hour, 14 a day), and records lived only in memory. They are now also saved as gzip files in `climate/` inside the data folder (`WEATHER_MCP_DATA`, `~/.weather-mcp` locally); later visits fetch only the last 100 days plus new days (about 2 calls), and a failed refresh shows the saved data with a note. Checked in the rebuilt container against the live API: first load saved a 125 KB owner-only file; after `docker compose restart` the same place loaded in 0.15 s with no Open-Meteo request. See [Caching Strategy](../../.github/CACHING.md#climate-explorer-records) and [DOCKER.md](../DOCKER.md#climate-explorer-records).
 
 ## Phase 6: Docs and PR
 

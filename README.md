@@ -140,11 +140,11 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - HRRR (3km resolution) is opt-in and CONUS-only; requests outside the continental US are rejected with a clear error
 - **Service Status Checking**: Proactively verify API availability with health checks
 - **Enhanced Error Handling**: Detailed, actionable error messages with status page links
-- **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance
+- **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance; the climate explorer's heavy 86-year downloads are also saved on disk so restarts don't repeat them
 
 ## Caching
 
-The Weather MCP server includes an intelligent in-memory caching system that significantly improves performance for AI-driven weather queries.
+The Weather MCP server includes an intelligent in-memory caching system that significantly improves performance for AI-driven weather queries. One kind of data is also saved on disk: the climate explorer's full daily record for each place (see below).
 
 ### Benefits
 
@@ -172,6 +172,7 @@ The cache automatically stores and retrieves weather data with intelligent expir
 - **Historical Data (>1 day old)**: Cached indefinitely (finalized data never changes)
 - **Recent Historical (<1 day)**: Cached for 1 hour (may still be updated)
 - **Grid Coordinates**: Cached indefinitely (geographic mappings are static)
+- **Climate Explorer Daily Records**: Kept in a memory-limited cache (96 MiB, about 50 places, least recently used dropped first) **and saved on disk**, one compressed file per place, in `climate/` inside the data folder (`~/.weather-mcp` by default, or `WEATHER_MCP_DATA_DIR`). Open-Meteo counts one 86-year record as about 680 calls, so without the disk copy every restart would spend that allowance again. A saved record is refreshed by fetching only its last 100 days plus new days; if that fails, the saved data is shown with a note. Delete the folder any time to start fresh; see [Climate explorer records](./docs/DOCKER.md#climate-explorer-records)
 
 ### Configuration
 
@@ -277,7 +278,7 @@ Use the `check_service_status` tool to view cache statistics including:
 - Cache size and utilization
 - API call reduction metrics
 
-For detailed information about caching architecture and configuration, see [.github/CACHING.md](./.github/CACHING.md).
+For detailed information about caching architecture and configuration, see [Caching Strategy](./.github/CACHING.md).
 
 ## Installation
 
@@ -482,7 +483,7 @@ Then open http://127.0.0.1:8787.
 - **Forms come from the tool schemas**, so new tools and parameters appear automatically.
 - **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
 - **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
-- **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
+- **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station. Each place is downloaded once and saved in the data folder, so later visits (and restarts) are instant.
 - **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
 - **Local only by default:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations. To reach it from other devices, set `WEB_HOST=0.0.0.0`, list the names you'll use in `WEB_ALLOWED_HOSTS`, and set `WEATHER_MCP_TOKEN` to require a token (the console shows a sign-in box). Details in the [guide](./docs/WEB_CONSOLE.md#configuration).
 
@@ -1238,10 +1239,11 @@ weather-mcp/
 │   │                            #   marine, imagery, lightning, river, wildfire, locations, status)
 │   ├── services/                # API clients and stores: noaa, openmeteo, nomads, modelComparison,
 │   │                            #   nominatim, geocoding, ncei, nifc, rainviewer, blitzortung,
-│   │                            #   locationStore (USGS Water Services is called from noaa.ts)
+│   │                            #   locationStore, dailyRecordStore (climate records on disk)
+│   │                            #   (USGS Water Services is called from noaa.ts)
 │   ├── types/                   # TypeScript type definitions
-│   ├── utils/                   # cache, validation, units, timezone, normals, snow, precipType,
-│   │                            #   climatology, locationResolver, gribGrid, logger, and more
+│   ├── utils/                   # cache, byteBudgetCache, validation, units, timezone, normals, snow,
+│   │                            #   precipType, climatology, locationResolver, gribGrid, logger, and more
 │   ├── config/                  # cache, tools (presets and aliases), api, displayThresholds
 │   ├── analytics/               # Optional, off by default
 │   └── errors/                  # Custom error class hierarchy
@@ -1256,7 +1258,7 @@ weather-mcp/
 └── package.json
 ```
 
-The full annotated tree is in [CLAUDE.md](./CLAUDE.md).
+The full annotated tree is in [CLAUDE.md](./CLAUDE.md); the runtime flow is in [Application Flow](./docs/APPLICATION_FLOW.md).
 
 ## API Information
 
@@ -1351,7 +1353,7 @@ For more details on NOAA APIs, see [NOAA_API_RESEARCH.md](./docs/NOAA_API_RESEAR
 
 ### Rate Limits
 - **NOAA Weather API**: Automatic retry with exponential backoff on rate limit errors
-- **Open-Meteo API**: 10,000 requests/day for non-commercial use
+- **Open-Meteo API**: free for non-commercial use, limited to 600 calls a minute, 5,000 an hour and 10,000 a day. A request covering many days counts as several calls (two weeks of 15 variables is 1.5), so the climate explorer's 86-year download costs about 680: roughly 7 new places an hour, 14 a day. Saved records (above) mean each place is downloaded once. When a limit is hit the error says which one
 
 ### Recommendations
 - **For recent US weather**: Use dates within the last 7 days for detailed station observations
@@ -1407,42 +1409,50 @@ To report a security vulnerability, please see our [Security Policy](./SECURITY.
 
 ## Documentation
 
-📚 **[Complete Documentation Index](./docs/README.md)** - Comprehensive navigation guide to all project documentation
+📚 **[Complete Documentation Index](./docs/README.md)** - Navigation guide to every document below, with a note on which are current and which are dated snapshots.
 
-### Quick Links
+**Current status and open work:** [To Do list](./docs/TODO.md) · [Changelog](./CHANGELOG.md) · [Project Status](./docs/PROJECT_STATUS.md)
 
-**For Users:**
+### Using the server
+
 - [Web Console Guide](./docs/WEB_CONSOLE.md) - Run tools and explore climate history in a browser, no AI client needed
-- [Running in Docker](./docs/DOCKER.md) - Run the server in a container (Raspberry Pi friendly) for all your devices
-- [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup instructions for 8 different MCP clients
-- [Testing Guide](./docs/testing/TESTING_GUIDE.md) - Manual testing procedures
-- [Error Handling](./docs/ERROR_HANDLING.md) - Enhanced error handling features
+- [Running in Docker](./docs/DOCKER.md) - Run the server in a container (your own computer or a Raspberry Pi) for all your devices
+- [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup for 8 MCP clients, including connecting to a remote server
+- [Caching Strategy](./.github/CACHING.md) - In-memory cache, TTLs, and the climate records saved on disk
+- [Error Handling](./docs/ERROR_HANDLING.md) - How errors are reported
+- [Service Status Best Practices](./docs/MCP_BEST_PRACTICES.md) - MCP guidelines used here
+- [Local Analytics Guide](./docs/analytics/LOCAL_ANALYTICS_GUIDE.md) - Optional, off by default
 
-**For Developers:**
+### Developing
+
 - [Contributing Guidelines](./CONTRIBUTING.md) - How to contribute
-- [Development Guide](./CLAUDE.md) - AI assistant development guide
-- [Code Review](./docs/development/CODE_REVIEW.md) - Code quality analysis
-- [Security Audit](./docs/development/SECURITY_AUDIT_V1.6.md) - Security assessment
+- [Development Guide for AI assistants](./CLAUDE.md) (mirrored in [AGENTS.md](./AGENTS.md)) - Architecture, conventions, and tests
+- [Application Flow](./docs/APPLICATION_FLOW.md) - Startup, request handling, caching and shutdown
+- [Testing Guide](./docs/testing/TESTING_GUIDE.md) and [Test Suite Overview](./docs/testing/TEST_SUITE_README.md) - Manual and automated testing
+- [NOAA API Research](./docs/NOAA_API_RESEARCH.md) and [Historical Data Plan](./docs/HISTORICAL_DATA_PLAN.md) - Data source notes
+- [Documentation Maintenance](./docs/development/DOCUMENTATION_MAINTENANCE.md) - Keeping these docs in sync
+- [Publishing](./docs/publishing/PUBLISHING.md) and [MCP Registry Submission](./docs/publishing/REGISTRY_SUBMISSION.md) - Releasing
 
-**Planning & Roadmap:**
-- [Implementation Plan](./docs/planning/IMPLEMENTATION_PLAN.md) - Project roadmap
-- [Future Enhancements](./docs/planning/FUTURE_ENHANCEMENTS.md) - Planned features
-- [Roadmap](./docs/planning/ROADMAP.md) - Long-term plans
+### Security
 
-**Testing & Quality:**
-- [Test Suite](./docs/testing/TEST_SUITE_README.md) - Test overview
-- [Test Coverage](./docs/testing/TEST_COVERAGE_ANALYSIS_2025.md) - Latest coverage analysis
-- [Test Recommendations](./docs/testing/TEST_RECOMMENDATIONS.md) - Improvement suggestions
+- [Security Policy](./SECURITY.md) - Reporting, privacy, and best practices
+- [Security Audit v1.6](./docs/development/SECURITY_AUDIT_V1.6.md) (latest; predates the web console and Docker) and the [earlier audit](./docs/development/SECURITY_AUDIT.md)
+- [Analytics Security Guide](./docs/analytics/MCP_ANALYTICS_SECURITY_GUIDE.md)
 
-**Analytics (Optional):**
-- [Analytics Plan](./docs/analytics/ANALYTICS_MCP_PLAN.md) - Privacy-first analytics
-- [Analytics Security](./docs/analytics/MCP_ANALYTICS_SECURITY_GUIDE.md) - Security implementation guide
-- [Local Analytics](./docs/analytics/LOCAL_ANALYTICS_GUIDE.md) - Setup guide
+### Planning
 
-**Technical Documentation:**
-- [NOAA API Research](./docs/NOAA_API_RESEARCH.md) - NOAA API integration details
-- [Historical Data Plan](./docs/HISTORICAL_DATA_PLAN.md) - Historical weather implementation
-- [MCP Best Practices](./docs/MCP_BEST_PRACTICES.md) - MCP protocol guidelines
+- [To Do list](./docs/TODO.md) - Open work, in priority order
+- [Roadmap](./docs/planning/ROADMAP.md), [Future Enhancements](./docs/planning/FUTURE_ENHANCEMENTS.md), and [Implementation Plan](./docs/planning/IMPLEMENTATION_PLAN.md)
+- [Docker Deployment Plan](./docs/planning/DOCKER_DEPLOYMENT_PLAN.md) - Design, decisions and test results for the container
+- [Climate Normals Plan](./docs/development/CLIMATE_NORMALS_PLAN.md) and [Analytics Plan](./docs/analytics/ANALYTICS_MCP_PLAN.md)
+
+### Quality reports (dated snapshots)
+
+- [Code Review](./docs/development/CODE_REVIEW.md) and [Code Quality Report v1.6](./docs/development/CODE_QUALITY_REPORT_V1.6.md)
+- [Test Coverage Analysis 2025](./docs/testing/TEST_COVERAGE_ANALYSIS_2025.md), [Coverage Report v1.0](./docs/testing/TEST_COVERAGE_REPORT_V1.0.md), [Test Recommendations](./docs/testing/TEST_RECOMMENDATIONS.md), [Test Quality Assessment v1.2](./docs/development/TEST_QUALITY_ASSESSMENT_V1.2.md), [Critical Test Gaps](./docs/development/TEST_GAPS_CRITICAL.md)
+- [Documentation Maintenance Summary](./docs/development/DOCUMENTATION_MAINTENANCE_SUMMARY.md)
+- [Release history](./docs/releases/CHANGELOG.md) (through 1.6.0) and [v0.1.0 release notes](./docs/releases/RELEASE_NOTES_v0.1.0.md)
+- [Project Description](./docs/PROJECT_DESCRIPTION.md) - the original requirements
 
 ## License
 
@@ -1453,6 +1463,7 @@ MIT
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 For information about code quality, security considerations, and development best practices, see:
+- [TODO.md](./docs/TODO.md) - Open work you could pick up
 - [CODE_REVIEW.md](./docs/development/CODE_REVIEW.md) - Comprehensive code quality analysis
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 - [SECURITY.md](./SECURITY.md) - Security policy and vulnerability reporting

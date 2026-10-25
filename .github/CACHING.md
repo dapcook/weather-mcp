@@ -4,7 +4,7 @@ This document explains the caching implementation in the Weather MCP server.
 
 ## Overview
 
-The Weather MCP server implements an in-memory cache with TTL (Time To Live) and LRU (Least Recently Used) eviction to:
+The Weather MCP server implements an in-memory cache with TTL (Time To Live) and LRU (Least Recently Used) eviction, plus two extra layers for the climate explorer's very large daily records (a memory-limited cache and files on disk; see [Climate explorer records](#climate-explorer-records)), to:
 - Reduce API calls to NOAA and Open-Meteo services
 - Improve response times for repeated queries
 - Protect against rate limits during heavy usage
@@ -14,7 +14,7 @@ The Weather MCP server implements an in-memory cache with TTL (Time To Live) and
 
 ### Implementation Details
 
-- **Type**: In-memory cache (data stored in Node.js process memory)
+- **Type**: In-memory cache (data stored in Node.js process memory); the climate explorer's daily records are also saved on disk
 - **Eviction Policy**: LRU (Least Recently Used)
 - **Maximum Size**: Configurable (default: 1000 entries)
 - **TTL Strategy**: Variable based on data type and volatility
@@ -161,7 +161,7 @@ Entries are automatically removed when:
 
 ### Manual Cache Clearing
 
-Currently, there is no user-facing tool to clear the cache. The cache is automatically cleared when the server restarts.
+Currently, there is no user-facing tool to clear the cache. The in-memory cache is cleared when the server restarts. The climate explorer's saved records are not: they are files in `climate/` inside the data folder, and deleting that folder (or any file in it) clears them.
 
 For development/debugging, you can modify the services to expose cache clearing:
 
@@ -172,9 +172,9 @@ openMeteoService.clearCache();
 
 ## Future Enhancements
 
-### Persistent Cache (Future Consideration)
+### Persistent Cache for Everything Else (Future Consideration)
 
-For larger-scale deployments with multiple server instances, consider implementing a persistent cache layer:
+Only the climate explorer's daily records are persistent today. For larger-scale deployments with multiple server instances, consider implementing a general persistent cache layer:
 
 **Options:**
 - **Redis**: Distributed in-memory cache
@@ -225,6 +225,18 @@ With 1000 max entries:
 ### Thread Safety
 
 The cache is not explicitly thread-safe, but Node.js's single-threaded event loop makes race conditions unlikely for the MCP server's usage pattern (sequential request processing via stdio).
+
+## Climate explorer records
+
+One climate explorer request needs the full daily high, low and precipitation record for a place, 1940 to today (about 31,700 days). Open-Meteo's free allowance counts that request as roughly 680 calls (limits: 600 a minute, 5,000 an hour, 10,000 a day), so it is the one request where caching decides whether the tool is usable. It gets three layers, looked up in this order (`OpenMeteoService.getDailyTemperatureRecordWithStatus`):
+
+1. **Memory** (`ByteBudgetCache`, `src/utils/byteBudgetCache.ts`). A parsed record is about 2 MB, so an entry-count limit would let browsing many places grow memory without bound. This cache is limited by bytes instead (96 MiB, about 50 places) and drops the least recently used first. Measured with garbage collection forced, 100 places held 195 MB under the old entry-count cache and stay at 96 MiB now. Keyed by coordinates (rounded to 0.01 degrees) and end date.
+2. **Disk** (`DailyRecordStore`, `src/services/dailyRecordStore.ts`). One gzip JSON file per place in `<data dir>/climate/` (`~/.weather-mcp` by default, `WEATHER_MCP_DATA_DIR` in a container), about 100-200 KB each. Files are written atomically (temporary file, then rename) with owner-only permissions, validated when read (a damaged, old-format or oversized file is ignored and deleted), and the folder is limited to 128 MiB by deleting the least recently opened files first. File names contain the place's coordinates, so paths are never logged. If the disk cannot be read or written the server carries on without it.
+3. **Download** from Open-Meteo, then saved to disk.
+
+A saved record is **topped up**, not re-downloaded, when its last day is behind the requested end: the last 100 days are fetched again (Open-Meteo revises the newest values for a while) together with the new days, about 2 calls. If that top-up fails (a rate limit, no network), the saved record is returned with a note instead of an error, is not kept in memory, and the next request tries again. Two requests for the same place at once share a single download. Nothing is written to disk when `CACHE_ENABLED=false`.
+
+Tests: `tests/unit/daily-record-store.test.ts`, `openmeteo-daily-record-disk.test.ts`, `openmeteo-daily-record-cache.test.ts`, `byte-budget-cache.test.ts`, and `web-climate-disk.test.ts` (a restart serves the place without contacting Open-Meteo).
 
 ## Monitoring and Debugging
 

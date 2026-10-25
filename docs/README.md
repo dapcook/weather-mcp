@@ -2,13 +2,17 @@
 
 This directory contains comprehensive documentation for the Weather MCP Server project.
 
+**Current vs. snapshot:** the guides under *Getting Started*, *Planning* (the [To Do list](./TODO.md) and the Docker plan), *Testing* (`TESTING_GUIDE`, `TEST_SUITE_README`), and the root-level files are kept up to date with the code. Reports with a version or year in the name (audits, coverage and quality reports, release notes, `PROJECT_STATUS`) are dated snapshots of that moment and are not rewritten; they say so at the top.
+
 ## Documentation Structure
 
 ### 📁 Getting Started
 - **[../README.md](../README.md)** - Main project README with installation and usage instructions
 - **[CLIENT_SETUP.md](./CLIENT_SETUP.md)** - Setup guides for 8 different MCP clients
 - **[WEB_CONSOLE.md](./WEB_CONSOLE.md)** - Web console guide: run every tool in a browser and use the climate explorer
-- **[DOCKER.md](./DOCKER.md)** - Run the server in Docker (Raspberry Pi friendly): setup, settings, security, troubleshooting
+- **[DOCKER.md](./DOCKER.md)** - Run the server in Docker (your own computer or a Raspberry Pi): setup, settings, saved climate records, security, troubleshooting
+- **[TODO.md](./TODO.md)** - Open work in priority order, and what was finished recently
+- **[../.github/CACHING.md](../.github/CACHING.md)** - Caching strategy: in-memory TTL cache, memory-limited cache, and climate records saved on disk
 
 ### 📁 Analytics (`analytics/`)
 - **[ANALYTICS_MCP_PLAN.md](./analytics/ANALYTICS_MCP_PLAN.md)** - Privacy-first analytics implementation plan
@@ -59,7 +63,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - **[PROJECT_DESCRIPTION.md](./PROJECT_DESCRIPTION.md)** - Detailed project description
 
 ### 📁 Root Level Documentation
-- **[../CLAUDE.md](../CLAUDE.md)** - AI assistant development guide
+- **[../CLAUDE.md](../CLAUDE.md)** - AI assistant development guide (mirrored in **[../AGENTS.md](../AGENTS.md)** for other agents)
 - **[../CONTRIBUTING.md](../CONTRIBUTING.md)** - Contribution guidelines
 - **[../SECURITY.md](../SECURITY.md)** - Security policy and vulnerability reporting
 - **[../CHANGELOG.md](../CHANGELOG.md)** - Version history
@@ -69,6 +73,8 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 ### For Users
 - [Installation](../README.md#installation)
 - [Setup Guide](./CLIENT_SETUP.md)
+- [Web Console Guide](./WEB_CONSOLE.md)
+- [Running in Docker](./DOCKER.md)
 - [Testing Guide](./testing/TESTING_GUIDE.md)
 - [Error Handling](./ERROR_HANDLING.md)
 
@@ -80,6 +86,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - [Development Plan](./planning/IMPLEMENTATION_PLAN.md)
 
 ### For Maintainers
+- [To Do list](./TODO.md)
 - [Publishing Guide](./publishing/PUBLISHING.md)
 - [Changelog](../CHANGELOG.md)
 - [Security Audit](./development/SECURITY_AUDIT_V1.6.md)
@@ -110,6 +117,8 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - [Test Gaps Analysis](./development/TEST_GAPS_CRITICAL.md)
 
 ### 📋 Planning & Roadmap
+- [To Do list](./TODO.md)
+- [Docker Deployment Plan](./planning/DOCKER_DEPLOYMENT_PLAN.md)
 - [Implementation Plan](./planning/IMPLEMENTATION_PLAN.md)
 - [Roadmap](./planning/ROADMAP.md)
 - [Future Enhancements](./planning/FUTURE_ENHANCEMENTS.md)
@@ -118,6 +127,8 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 - [Code Review](./development/CODE_REVIEW.md)
 - [AI Assistant Guide](../CLAUDE.md)
 - [Documentation Maintenance](./development/DOCUMENTATION_MAINTENANCE.md)
+- [Application Flow](./APPLICATION_FLOW.md)
+- [Caching Strategy](../.github/CACHING.md)
 
 ## Version Information
 
