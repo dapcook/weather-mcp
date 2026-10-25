@@ -414,7 +414,7 @@ Claude Desktop's config file can only launch local programs, so the [`mcp-remote
 }
 ```
 
-Then fully quit and reopen Claude Desktop (<kbd>Cmd</kbd>+<kbd>Q</kbd> on macOS).
+**Edit the file while Claude Desktop is fully quit** (<kbd>Cmd</kbd>+<kbd>Q</kbd> on macOS, not just closing the window), then reopen it. The app keeps its own copy of the settings in memory and writes it back to this file, so an edit made while it is running can be silently reverted (this happened while testing this guide: the file went back to its old contents within the hour).
 
 - `--allow-http` is needed because `mcp-remote` only accepts plain `http://` for localhost unless told otherwise. If you serve the console over HTTPS (for example with Tailscale), use the `https://` address and drop that flag.
 - The token sits in `env`, and the header has no space after the colon, so the space inside `Bearer <token>` can't split the argument.
@@ -507,7 +507,7 @@ After configuring any client, test the connection with these simple queries:
 2. **`403 Forbidden host`:** the hostname or IP in your URL isn't in the server's `WEB_ALLOWED_HOSTS`. Add it and run `docker compose up -d`.
 3. **Connection refused or timed out:** check that the container is running (`docker compose ps`), that you're on the same network, and that the port matches (`WEATHER_MCP_PORT`).
 4. **`.local` name not found:** not every device resolves mDNS names (some Android and Windows setups don't). Use the server's IP address and add it to `WEB_ALLOWED_HOSTS`.
-5. **Claude Desktop only:** it must be fully quit and reopened after editing the config, and `npx` must be on the PATH it launches with. The log will say if it couldn't start the command.
+5. **Claude Desktop only:** edit the config with the app fully quit, then reopen it. An edit made while it is running can be overwritten by the app, and its log then shows it still trying the old address. Also make sure `npx` is on the PATH it launches with; the log will say if it couldn't start the command.
 
 ### Tools Not Appearing
 
