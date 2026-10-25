@@ -65,7 +65,8 @@ src/
 │   ├── lightning.ts            # Lightning strike/safety types
 │   └── wildfire.ts             # NIFC wildfire types
 ├── utils/                      # Shared utilities
-│   ├── cache.ts                # LRU cache with TTL
+│   ├── cache.ts                # LRU cache with TTL (limited by entry count)
+│   ├── byteBudgetCache.ts      # LRU cache limited by memory, for large entries (the climate explorer's daily records)
 │   ├── validation.ts           # Input validation
 │   ├── units.ts                # Unit conversions
 │   ├── logger.ts               # Structured logging (stderr only)
@@ -310,8 +311,11 @@ tests/
 │   ├── nomads-grib-loading.test.ts     # GRIB decoder loads lazily; clear error when unavailable (ARM)
 │   ├── request-logger.test.ts          # requests.log honors WEATHER_MCP_DATA_DIR
 │   ├── openmeteo-rate-limit.test.ts    # Open-Meteo 429 handling: its reason, Retry-After, service-specific links (local stub server)
+│   ├── byte-budget-cache.test.ts       # Memory-limited LRU cache
+│   ├── openmeteo-daily-record-cache.test.ts  # Daily record cache stays within its memory budget (local stub server)
 │   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
 │   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
+│   ├── web-climate.test.ts             # /api/climate end to end with a stub Open-Meteo: shape, reuse across baselines, failures not cached, bad input
 │   └── ncei.test.ts                    # NCEI service
 └── integration/                        # Integration tests (live API calls)
     ├── error-recovery.test.ts
@@ -327,7 +331,7 @@ tests/
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
 - **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
-- **Unit vs integration:** `tests/unit` (1,159 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
+- **Unit vs integration:** `tests/unit` (1,189 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -463,7 +467,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 | Location searches | 30 days |
 | Weather stations | 24 hours |
 | Climate normals | ∞ (static historical data) |
-| Daily temperature archive (climate explorer) | ∞, keyed by coordinates and end date (so a new day means a new entry) |
+| Daily temperature archive (climate explorer) | No expiry, but limited by memory (96 MiB, about 50 places, least recently used dropped first); keyed by coordinates and end date (so a new day means a new entry) |
 | Forecasts | 2 hours |
 | Marine conditions | 1 hour |
 | Air quality | 1 hour |
@@ -480,7 +484,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 ### Cache Implementation
 
 - **Algorithm:** LRU (Least Recently Used) eviction
-- **Size limits:** Configurable max size (default 1000 entries)
+- **Size limits:** Configurable max size (default 1000 entries), plus a separate memory-limited cache (`ByteBudgetCache`, 96 MiB by default) for the climate explorer's full daily records. A parsed record is about 2 MB, so an entry-count limit alone would let browsing many places grow memory without bound; measured with garbage collection forced, 100 places held 195 MB under the entry-count cache and stay at the 96 MiB budget now. Anything else cached in bulk should use `ByteBudgetCache` too
 - **Automatic cleanup:** Every 5 minutes
 - **Graceful shutdown:** Cleanup on SIGTERM/SIGINT
 
@@ -642,7 +646,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
-- **Tests:** 1,221 (1,159 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Tests:** 1,251 (1,189 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 

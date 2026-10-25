@@ -1174,13 +1174,13 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,221 tests** across unit (1,159 tests in 37 files) and integration (62 tests in 4 files) suites
+- **1,251 tests** across unit (1,189 tests in 40 files) and integration (62 tests in 4 files) suites
 - **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
 - **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
 - **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (1,159 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Unit Tests** (1,189 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
 - **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
@@ -1248,7 +1248,7 @@ weather-mcp/
 ├── web/
 │   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # 1,159 tests, no network
+│   ├── unit/                    # 1,189 tests, no network
 │   └── integration/             # 62 tests, live APIs
 ├── docs/                        # Documentation (start at docs/README.md)
 ├── Dockerfile, docker-compose.yml, .env.example
@@ -1384,7 +1384,7 @@ This project takes security seriously and implements multiple layers of protecti
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (1,221 tests) with a 100% coverage target on critical utilities
+- Comprehensive test suite (1,251 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 

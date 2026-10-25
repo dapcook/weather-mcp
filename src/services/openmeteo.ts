@@ -19,6 +19,7 @@ import type {
   ClimateNormals
 } from '../types/openmeteo.js';
 import { Cache } from '../utils/cache.js';
+import { ByteBudgetCache } from '../utils/byteBudgetCache.js';
 import { CacheConfig, getHistoricalDataTTL } from '../config/cache.js';
 import { validateLatitude, validateLongitude } from '../utils/validation.js';
 import { logger, redactCoordinatesForLogging } from '../utils/logger.js';
@@ -40,6 +41,24 @@ export interface OpenMeteoServiceConfig {
   marineURL?: string;
   timeout?: number;
   maxRetries?: number;
+  /** Memory budget, in bytes, for cached full daily records (see getDailyTemperatureRecord) */
+  dailyRecordCacheBytes?: number;
+}
+
+/**
+ * Default budget for cached full daily records. One 86-year record is about 2 MB
+ * once parsed, so this keeps roughly 50 places before the oldest-used are dropped,
+ * well inside a 768 MB container.
+ */
+export const DEFAULT_DAILY_RECORD_CACHE_BYTES = 96 * 1024 * 1024;
+
+/**
+ * Approximate memory held by a parsed daily record: per day, three numbers
+ * (8 bytes each) plus a date string and its slot in the array (about 40 bytes).
+ * Measured at about 2 MB for 31,708 days, which this matches.
+ */
+export function estimateDailyRecordBytes(record: OpenMeteoHistoricalResponse): number {
+  return (record.daily?.time.length ?? 0) * 64;
 }
 
 /**
@@ -73,6 +92,8 @@ export class OpenMeteoService {
   private marineClient: AxiosInstance;
   private maxRetries: number;
   private cache: Cache;
+  /** Full daily records are large, so they are limited by memory rather than by entry count */
+  private dailyRecordCache: ByteBudgetCache<OpenMeteoHistoricalResponse>;
 
   constructor(config: OpenMeteoServiceConfig = {}) {
     const {
@@ -87,6 +108,7 @@ export class OpenMeteoService {
 
     this.maxRetries = maxRetries;
     this.cache = new Cache(CacheConfig.maxSize);
+    this.dailyRecordCache = new ByteBudgetCache(config.dailyRecordCacheBytes ?? DEFAULT_DAILY_RECORD_CACHE_BYTES);
 
     // Historical weather client
     this.client = axios.create({
@@ -296,6 +318,7 @@ export class OpenMeteoService {
    */
   clearCache(): void {
     this.cache.clear();
+    this.dailyRecordCache.clear();
   }
 
   /**
@@ -453,11 +476,15 @@ export class OpenMeteoService {
       timezone: 'auto'
     };
 
+    // Kept in a cache limited by memory, not entry count: a record is about 2 MB, so
+    // counting entries would let browsing many places grow memory without bound.
+    // The key includes the end date, so each new day's record is a new entry; the
+    // least recently used records are dropped to stay inside the budget.
     const cacheKey = Cache.generateKey('openmeteo-daily-record', latitude, longitude, startDate, endDate);
     if (CacheConfig.enabled) {
-      const cached = this.cache.get(cacheKey);
+      const cached = this.dailyRecordCache.get(cacheKey);
       if (cached) {
-        return cached as OpenMeteoHistoricalResponse;
+        return cached;
       }
     }
 
@@ -465,8 +492,7 @@ export class OpenMeteoService {
     this.validateResponse(response, startDate, endDate, false);
 
     if (CacheConfig.enabled) {
-      // The key includes the end date, so each new day's record is a new entry
-      this.cache.set(cacheKey, response, getHistoricalDataTTL(endDate));
+      this.dailyRecordCache.set(cacheKey, response, estimateDailyRecordBytes(response));
     }
     return response;
   }

@@ -48,16 +48,16 @@ npm run test:ui
 
 ```
 tests/
-├── unit/                    37 test files (1,159 tests)
-│   ├── Core Utilities       cache, validation, units, errors
+├── unit/                    40 test files (1,189 tests)
+│   ├── Core Utilities       cache, byte-budget-cache, validation, units, errors
 │   ├── Weather Domain       airQuality, fireWeather, snow, normals, precip-type, climatology
 │   ├── Geospatial          distance, geohash, gribGrid, geography, timezone
 │   ├── Security            security, security-v1.6
 │   ├── Configuration       config, tool-config
 │   ├── Locations           location-resolver, saved-locations-activities
 │   ├── Handlers            imagery-handler, lightning-handler
-│   ├── Services            ncei, rainviewer, retry-logic, nomads-hrrr-domain, nomads-grib-loading
-│   ├── Web Server          web-config (settings, Host/Origin/token checks), web-server (real server, /mcp over an SDK client, console API)
+│   ├── Services            ncei, rainviewer, retry-logic, nomads-hrrr-domain, nomads-grib-loading, openmeteo-daily-record-cache
+│   ├── Web Server          web-config (settings, Host/Origin/token checks), web-server (real server, /mcp over an SDK client, console API), web-climate (/api/climate with a stub Open-Meteo)
 │   └── Version-specific    v1.6.1-fixes, bounds-checking, alert-sorting
 │
 ├── integration/             4 test files (62 tests)
