@@ -143,6 +143,15 @@ Saved locations are stored in `locations.json` in the data folder on the host: `
 - **Only one copy is used.** Once the container is the one your clients use, locations saved on your other machine won't appear here.
 - **Permissions:** the container runs as user ID 1000 (`node`). On a Raspberry Pi the first user is normally 1000, so `mkdir -p data` as that user is enough. If your user is different on Linux, run `sudo chown 1000:1000 data`. Docker Desktop on macOS and Windows maps file ownership for you, so no change is needed there.
 
+## Climate explorer records
+
+The first time you open a place in the climate explorer, the server downloads its full daily record (1940 to today), which Open-Meteo's free allowance counts as hundreds of calls. It saves the record as one compressed file (about 100-200 KB) in a `climate/` folder inside the data folder, so rebuilding or restarting the container does not download it again; later visits only fetch the newest days.
+
+- **Size:** the folder is limited to 128 MiB (hundreds of places); the least recently opened are deleted first.
+- **Privacy:** file names contain the place's coordinates (rounded to 0.01°), so treat the folder like `locations.json`.
+- **Start fresh:** delete the `climate/` folder (or any file in it) while the container is stopped or running; missing files are simply downloaded again.
+- **Back up / move:** not needed, but copying `climate/` along with `locations.json` carries the places over.
+
 ## Security
 
 - **Set a token.** Without `WEATHER_MCP_TOKEN`, anyone who can reach port 3003 can use every tool, including saving and deleting locations. The server logs a warning if it's listening beyond localhost without one.

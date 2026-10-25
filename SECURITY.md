@@ -141,7 +141,7 @@ By default the server uses stdio and opens no network port. `npm run web` (and t
 - **Location Data**: Coordinates are processed for API requests, and redacted in logs (rounded to about 1.1 km) unless `LOG_PII=true`
 - **Saved Locations**: If you use the saved locations feature, the names and coordinates you choose are stored in a local JSON file (`~/.weather-mcp/locations.json`, or `locations.json` in `WEATHER_MCP_DATA_DIR`). They can identify where you live or visit, so keep that file (or the Docker `data/` folder) private and out of version control. The file itself stays on your machine, but the coordinates in it are sent to the weather services whenever you query a saved location (like any other query), and a place you save by name is looked up through Nominatim
 - **No Other Personal Data**: No account, email, or other personal information is collected
-- **Local Cache**: Weather data is cached in memory on the machine running the server
+- **Local Cache**: Weather data is cached in memory on the machine running the server. The climate explorer also saves each place's daily temperature record on disk (`climate/` inside the data folder, `~/.weather-mcp` by default, or `WEATHER_MCP_DATA_DIR`), created readable only by you; the file names contain the place's coordinates (rounded to 0.01°), so keep that folder private like `locations.json`. These files are never logged by path, and a damaged or oversized file is ignored
 - **No Tracking by Default**: Anonymous usage analytics are opt-in (`ANALYTICS_ENABLED=true`, off by default), and never include coordinates or location names
 
 ### Network Security

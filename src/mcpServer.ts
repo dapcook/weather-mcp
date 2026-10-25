@@ -13,7 +13,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { NOAAService } from './services/noaa.js';
-import { OpenMeteoService } from './services/openmeteo.js';
+import { OpenMeteoService, OpenMeteoServiceConfig } from './services/openmeteo.js';
 import { NominatimService } from './services/nominatim.js';
 import { NCEIService } from './services/ncei.js';
 import { NIFCService } from './services/nifc.js';
@@ -54,6 +54,7 @@ import { applySavedLocation } from './utils/locationResolver.js';
  */
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import { dirname, join } from 'path';
 
 // Read version from package.json to ensure single source of truth
@@ -114,6 +115,13 @@ export interface WeatherServices {
 export interface WeatherServicesOptions {
   /** Path to the saved-locations JSON file (default: from WEATHER_MCP_DATA_DIR, else ~/.weather-mcp/locations.json) */
   locationsPath?: string;
+  /**
+   * Folder for saved climate records (in its `climate` subfolder). Default: the folder
+   * holding the saved-locations file, so the two always live together.
+   */
+  dataDir?: string;
+  /** Overrides for the Open-Meteo client (used by tests to point it at a local server) */
+  openMeteo?: OpenMeteoServiceConfig;
 }
 
 /**
@@ -127,7 +135,10 @@ export function resolveLocationsPath(env: NodeJS.ProcessEnv = process.env): stri
 
 export function createServices(options: WeatherServicesOptions = {}): WeatherServices {
   const userAgent = `weather-mcp/${SERVER_VERSION} (https://github.com/weather-mcp/weather-mcp)`;
-  const openMeteoService = new OpenMeteoService();
+  const locationsPath = options.locationsPath ?? resolveLocationsPath();
+  const dataDir = options.dataDir ?? (locationsPath ? dirname(locationsPath) : join(homedir(), '.weather-mcp'));
+  // Climate explorer downloads are saved here, so a restart does not repeat them
+  const openMeteoService = new OpenMeteoService({ dailyRecordStoreDir: join(dataDir, 'climate'), ...options.openMeteo });
   const nomadsService = new NOMADSService({ userAgent });
 
   return {
@@ -138,7 +149,7 @@ export function createServices(options: WeatherServicesOptions = {}): WeatherSer
     // Nominatim/OSM geocoding for save_location (rate limited to 1 req/sec per OSM policy)
     nominatimService: new NominatimService(),
     // Saved/favorite locations (JSON file)
-    locationStore: new LocationStore(options.locationsPath ?? resolveLocationsPath()),
+    locationStore: new LocationStore(locationsPath),
     // NCEI climate normals (optional token; falls back to Open-Meteo)
     nceiService: new NCEIService(),
     // NCEP model runs (GFS, NAM, HRRR) from the public NOMADS filter endpoint

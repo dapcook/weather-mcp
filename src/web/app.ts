@@ -250,7 +250,12 @@ export async function startWebServer(
       throw new HttpError(400, `Invalid baseline "${baselineParam}": use YYYY-YYYY, at least 10 years, 1940-${lastFullYear}`);
     }
 
-    const record = await services.openMeteoService.getDailyTemperatureRecord(latitude, longitude, CLIMATE_RECORD_START, endDate);
+    const { record, refreshError } = await services.openMeteoService.getDailyTemperatureRecordWithStatus(
+      latitude,
+      longitude,
+      CLIMATE_RECORD_START,
+      endDate
+    );
     const daily = record.daily!; // validated by the service
     const input = {
       time: daily.time,
@@ -274,6 +279,8 @@ export async function startWebServer(
       low: packSeries(input.low),
       precipitation: packSeries(input.precipitation, 2),
       climatology: computeClimatology(input, baseline),
+      // Set when the saved record could not be brought up to date (e.g. Open-Meteo is rate limiting)
+      ...(refreshError ? { refreshNote: `Showing saved data that may be missing the latest days. ${refreshError}` } : {}),
     };
   }
 

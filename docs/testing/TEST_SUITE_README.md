@@ -8,9 +8,9 @@ Quick reference guide for the Weather MCP test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 1,070 |
+| **Total Tests** | 1,293 |
 | **Pass Rate** | 99.6% - 99.9% |
-| **Unit Tests** | 1,008 (27 files) |
+| **Unit Tests** | 1,231 (43 files) |
 | **Integration Tests** | 62 (4 files) |
 | **Execution Time (Unit)** | ~2 seconds |
 | **Execution Time (Full)** | ~4-5 minutes |
@@ -48,7 +48,7 @@ npm run test:ui
 
 ```
 tests/
-├── unit/                    40 test files (1,189 tests)
+├── unit/                    43 test files (1,231 tests)
 │   ├── Core Utilities       cache, byte-budget-cache, validation, units, errors
 │   ├── Weather Domain       airQuality, fireWeather, snow, normals, precip-type, climatology
 │   ├── Geospatial          distance, geohash, gribGrid, geography, timezone
@@ -56,8 +56,8 @@ tests/
 │   ├── Configuration       config, tool-config
 │   ├── Locations           location-resolver, saved-locations-activities
 │   ├── Handlers            imagery-handler, lightning-handler
-│   ├── Services            ncei, rainviewer, retry-logic, nomads-hrrr-domain, nomads-grib-loading, openmeteo-daily-record-cache
-│   ├── Web Server          web-config (settings, Host/Origin/token checks), web-server (real server, /mcp over an SDK client, console API), web-climate (/api/climate with a stub Open-Meteo)
+│   ├── Services            ncei, rainviewer, retry-logic, nomads-hrrr-domain, nomads-grib-loading, openmeteo-daily-record-cache, daily-record-store, openmeteo-daily-record-disk
+│   ├── Web Server          web-config (settings, Host/Origin/token checks), web-server (real server, /mcp over an SDK client, console API), web-climate (/api/climate with a stub Open-Meteo), web-climate-disk (restart reuse of saved records)
 │   └── Version-specific    v1.6.1-fixes, bounds-checking, alert-sorting
 │
 ├── integration/             4 test files (62 tests)
