@@ -2,7 +2,7 @@
 
 Open work on the Weather MCP Server, newest decisions first. This is the short, current list; longer-term ideas live in the [Roadmap](./planning/ROADMAP.md) and [Future Enhancements](./planning/FUTURE_ENHANCEMENTS.md), and what has shipped is in the [Changelog](../CHANGELOG.md).
 
-**Last reviewed:** 2026-10-25, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,231 unit tests passing.
+**Last reviewed:** 2026-10-28, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,246 unit tests passing.
 
 Keep this file honest: when you finish an item, move it to [Done recently](#done-recently) (or delete it), and when you find a new problem, add it here with why it matters.
 
@@ -39,12 +39,16 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 ### 7. Forecast form layout
 - Offered after the climate explorer cleanup: the Forecast tool's form in the web console could use the same tidy-up (grouping, matching control heights). The shared select and number-field styles already apply to it.
 
-### 8. Client configs not yet confirmed in the apps
+### 8. Model comparison: GFS/NAM/HRRR "precipitation chance" is not a probability
+- For the NOMADS models it is the share of the day's 3-hourly steps that have any precipitation in that single run, so a run with light rain all day shows 100% (seen live: GFS 100% next to ECMWF 31%, ICON 33%). The Open-Meteo rows use Open-Meteo's own value. Either rename it for the NOMADS rows (for example "wet hours 100%"), or drop it there and leave chance to the models that have one. The longer-term answer is the ensemble item under Ideas.
+
+### 9. Client configs not yet confirmed in the apps
 - The Cursor and VS Code examples in [CLIENT_SETUP.md](./CLIENT_SETUP.md#connecting-to-a-remote-server-http) follow those clients' documented formats and are marked untested. Confirm each in the app, then remove the "untested" note.
 
 ## Ideas, not committed to
 
 - **Merge PR #2** into the fork's `main` when you are satisfied with it. Nothing else blocks it.
+- **More comparison models.** Open-Meteo also serves regional high-resolution runs (ICON-EU/D2, GEM regional/HRDPS, UKMO, Météo-France AROME/ARPEGE, JMA, NBM), each one more entry in `OPEN_METEO_MODELS`. Ensembles (GEFS, ECMWF-ENS) would give real precipitation probabilities and forecast spread, but need Open-Meteo's ensemble API and a new output format. More NOMADS runs (RAP, NAM nests) fit the existing GRIB pipeline.
 - **Tailscale for remote access** (was Phase 5 of the Docker plan): sign in, turn on HTTPS, add the `*.ts.net` name to `WEB_ALLOWED_HOSTS`, `tailscale serve`. Never `tailscale funnel` (public internet). Dropped when the Raspberry Pi became unavailable; revisit if the server moves to an always-on machine.
 - **Disk cache for other heavy requests.** Only the climate explorer's 86-year record is saved on disk today. The next heaviest Open-Meteo calls (long `get_historical_weather` ranges, climate normals) are cached in memory only.
 - **Clear-cache control.** There is no tool or button to clear caches; delete the `climate/` folder in the data folder to reset the saved records.
@@ -55,6 +59,8 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 
 All on the `feat/docker-deployment` branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)); details in the [Changelog](../CHANGELOG.md).
 
+- Model comparison: ECMWF IFS, ECMWF AIFS, ICON and GEM added (replacing the mislabeled "ECMWF proxy"); NOMADS no longer picks a run that is still being posted
+- Climate explorer temperature axis stays fixed while stepping between years
 - Climate explorer records saved on disk, so restarts and rebuilds no longer repeat the download (about 680 Open-Meteo calls per place); refreshes fetch only the newest days, and a failed refresh shows the saved data with a note
 - Memory limit for the explorer's in-memory cache (96 MiB instead of growing without bound)
 - Open-Meteo rate-limit message says which limit was hit and links the right docs

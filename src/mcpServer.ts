@@ -273,7 +273,7 @@ const TOOL_DEFINITIONS = {
 
   get_model_comparison_forecast: {
     name: 'get_model_comparison_forecast' as const,
-    description: 'Compare forecasts across multiple model sources in one response. Supports GFS (NOMADS), NAM (NOMADS, ~84h deterministic horizon), HRRR (NOMADS, CONUS-only, ~48h deterministic horizon), and ECMWF proxy guidance via Open-Meteo. For requests beyond a model\'s horizon, its values are shown through the horizon and then marked as N/A. HRRR requests outside the continental US will fail — use GFS or NAM for those locations.',
+    description: 'Compare forecasts from several weather models side by side, day by day (high/low, precipitation chance and total, peak wind, humidity). Models: GFS (NOAA, global, 10 days), NAM (NOAA, North America, ~84h), HRRR (NOAA, continental US only, 48h), ECMWF IFS (European Centre, global, 15 days), ECMWF AIFS (European Centre\'s AI model, global, 15 days), ICON (Germany\'s DWD, global, ~7.5 days) and GEM (Environment Canada, global, 10 days). GFS/NAM/HRRR come from NOAA NOMADS model runs; ECMWF, AIFS, ICON and GEM from Open-Meteo. Days beyond a model\'s horizon are marked N/A. Use this to judge forecast confidence: when models agree the forecast is more certain.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -302,10 +302,10 @@ const TOOL_DEFINITIONS = {
         },
         models: {
           type: 'array' as const,
-          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf_proxy"]. You may also pass "ecmwf" and it will map to "ecmwf_proxy". "hrrr" is opt-in only (not part of the default set) since it is CONUS-only.',
+          description: 'Models to include. Defaults to ["gfs", "nam", "ecmwf", "icon", "gem"]. "hrrr" (continental US only) and "ecmwf_aifs" are opt-in. The old name "ecmwf_proxy" is accepted and means "ecmwf".',
           items: {
             type: 'string' as const,
-            enum: ['gfs', 'nam', 'hrrr', 'ecmwf_proxy', 'ecmwf']
+            enum: ['gfs', 'nam', 'hrrr', 'ecmwf', 'ecmwf_aifs', 'icon', 'gem']
           }
         }
       },

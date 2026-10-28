@@ -135,7 +135,7 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Data from NIFC WFIGS (National Interagency Fire Center)
 - **NOMADS Model-Run Forecasts & Model Comparison** (NEW - Unreleased)
   - `get_forecast_nomads`: Raw forecast straight from the latest NOMADS/NCEP GFS model run
-  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), and ECMWF proxy (Open-Meteo) side by side for the same location/dates
+  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), ECMWF IFS and AIFS, ICON, and GEM (Open-Meteo) side by side for the same location/dates
   - Per-model deterministic horizon handling (e.g. NAM ~84h, HRRR ~48h) with values marked N/A beyond each model's horizon
   - HRRR (3km resolution) is opt-in and CONUS-only; requests outside the continental US are rejected with a clear error
 - **Service Status Checking**: Proactively verify API availability with health checks
@@ -1037,30 +1037,40 @@ Fetches and formats a forecast directly from the current NCEP GFS model run via 
 - Average humidity
 
 ### 18. get_model_comparison_forecast (NEW - Unreleased)
-Compare forecasts across multiple model sources (GFS, NAM, HRRR, ECMWF proxy) side by side.
+Compare forecasts from several weather models side by side, day by day: the US models (GFS, NAM, HRRR), the European Centre's ECMWF IFS and its AI model AIFS, Germany's ICON, and Canada's GEM.
 
 **Parameters:**
 - `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
 - `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
 - `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `days` (optional): Number of forecast days to compare (1-10, default: 7)
-- `models` (optional): Array of models to include — `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf_proxy"` (or `"ecmwf"`, which maps to `"ecmwf_proxy"`). Defaults to `["gfs", "nam", "ecmwf_proxy"]`. `"hrrr"` is opt-in only since it's CONUS-only.
+- `models` (optional): Array of models to include: `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf"`, `"ecmwf_aifs"`, `"icon"`, `"gem"`. Defaults to `["gfs", "nam", "ecmwf", "icon", "gem"]`; `"hrrr"` (continental US only) and `"ecmwf_aifs"` are opt-in. The old name `"ecmwf_proxy"` still works and now means `"ecmwf"`.
+
+**Models:**
+
+| Model | From | Source here | Coverage | Reaches |
+|---|---|---|---|---|
+| GFS | NOAA (US) | NOMADS model run, 1.0° grid | Global | 10 days |
+| NAM | NOAA (US) | NOMADS model run | North America | ~84 hours |
+| HRRR | NOAA (US) | NOMADS model run, 3 km | Continental US | 48 hours |
+| ECMWF IFS | European Centre (ECMWF) | Open-Meteo | Global | 15 days |
+| ECMWF AIFS | European Centre (AI model) | Open-Meteo | Global | 15 days |
+| ICON | Germany (DWD) | Open-Meteo, global run | Global | ~7.5 days |
+| GEM | Canada (ECCC) | Open-Meteo, global run | Global | 10 days |
 
 **Description:**
-Pulls GFS and NAM model-run data from NOMADS and blends in ECMWF proxy guidance via Open-Meteo for longer-range context, so you can see how models agree or diverge for the same location and dates. HRRR (3km, CONUS-only) can be added explicitly for high-resolution short-range guidance. Each model has a different deterministic horizon:
-- **NAM:** ~84 hours — later days are shown as N/A
-- **HRRR:** ~48 hours — later days are shown as N/A; requests outside the continental US will fail for this model
-- **GFS / ECMWF proxy:** cover the full requested range
+Shows how models agree or diverge for the same place and dates; when they agree, the forecast is more certain. GFS, NAM and HRRR are decoded from NOAA's NOMADS files. ECMWF, AIFS, ICON and GEM are each model's own forecast, served by Open-Meteo (one small request per model; before this, the "ECMWF proxy" row was Open-Meteo's automatic blend, not ECMWF). Days beyond a model's reach are shown as N/A with the reason. Each row shows the model run it came from when the source reports it; GEM's run time is shown as "not reported" because Open-Meteo's metadata for it was stale when checked. A single model run has no precipitation chance: Open-Meteo supplies one where it can, and AIFS has none.
 
 **Examples:**
 ```
-"Compare GFS and NAM forecasts for Denver this week"
+"Compare the models for Denver this week"
+"Do ECMWF and GFS agree on rain in Kansas City on Thursday?"
 "Show me GFS, NAM, and HRRR side by side for Dallas"
 ```
 
 **Returns:**
-- Per-model daily high/low temperature, precipitation, and wind (where available within each model's horizon)
-- Model run time and horizon notes (e.g., NAM/HRRR cutoff, HRRR CONUS-only restriction, ECMWF proxy caveat)
+- Per-model daily high/low temperature, precipitation chance and total, peak wind, and humidity, within each model's reach
+- Each model's run time and horizon, plus notes on models that stop early or failed
 
 ## Using Saved Locations with Weather Tools
 
@@ -1175,13 +1185,13 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,293 tests** across unit (1,231 tests in 43 files) and integration (62 tests in 4 files) suites
+- **1,308 tests** across unit (1,246 tests in 45 files) and integration (62 tests in 4 files) suites
 - **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
 - **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
 - **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (1,231 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Unit Tests** (1,246 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
 - **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
@@ -1250,7 +1260,7 @@ weather-mcp/
 ├── web/
 │   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # 1,231 tests, no network
+│   ├── unit/                    # 1,246 tests, no network
 │   └── integration/             # 62 tests, live APIs
 ├── docs/                        # Documentation (start at docs/README.md)
 ├── Dockerfile, docker-compose.yml, .env.example
@@ -1386,7 +1396,7 @@ This project takes security seriously and implements multiple layers of protecti
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (1,293 tests) with a 100% coverage target on critical utilities
+- Comprehensive test suite (1,308 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 

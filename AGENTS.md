@@ -22,7 +22,7 @@ src/
 ├── handlers/                   # Tool request handlers (one per MCP tool)
 │   ├── forecastHandler.ts
 │   ├── nomadsForecastHandler.ts        # Raw NOMADS/GFS model-run forecast
-│   ├── modelComparisonHandler.ts       # Multi-model (GFS/NAM/HRRR/ECMWF proxy) comparison
+│   ├── modelComparisonHandler.ts       # Multi-model comparison (GFS/NAM/HRRR from NOMADS; ECMWF IFS/AIFS, ICON, GEM from Open-Meteo)
 │   ├── currentConditionsHandler.ts
 │   ├── alertsHandler.ts
 │   ├── historicalWeatherHandler.ts
@@ -122,7 +122,7 @@ tests/
 
 1. **get_forecast** - Up to 16-day forecasts (NOAA/Open-Meteo auto-select by location); precipitation type; climate normals; snow/ice; timezone-aware output
 2. **get_forecast_nomads** - Raw forecast from the latest NOMADS/NCEP GFS model run (global)
-3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF proxy (Open-Meteo) side by side; HRRR is CONUS-only and opt-in
+3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF IFS, ECMWF AIFS, ICON, GEM (Open-Meteo) side by side; HRRR (CONUS-only) and AIFS are opt-in
 4. **get_current_conditions** - Current weather + optional fire weather indices (NOAA, US only); climate normals; snow depth
 5. **get_alerts** - Weather alerts/warnings (NOAA, US only)
 6. **get_historical_weather** - Historical data 1940-present (Open-Meteo, global); recent 7 days via NOAA (US only)
@@ -320,6 +320,8 @@ tests/
 │   ├── web-climate-disk.test.ts        # /api/climate across a restart, and the refreshNote when a refresh fails
 │   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
 │   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
+│   ├── nomads-run-selection.test.ts    # NOMADS picks a fully posted run (probes the last hour needed)
+│   ├── model-comparison.test.ts        # Open-Meteo comparison models: request params, per-model cache, run-time staleness, horizons, aliases (local stub server)
 │   ├── web-climate.test.ts             # /api/climate end to end with a stub Open-Meteo: shape, reuse across baselines, failures not cached, bad input
 │   └── ncei.test.ts                    # NCEI service
 └── integration/                        # Integration tests (live API calls)
@@ -336,7 +338,7 @@ tests/
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
 - **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
-- **Unit vs integration:** `tests/unit` (1,231 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
+- **Unit vs integration:** `tests/unit` (1,246 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -572,11 +574,18 @@ Fetches a deterministic forecast directly from the latest NOMADS/NCEP GFS model 
 
 ### get_model_comparison_forecast
 
-Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same location/date range.
+Compares models side by side for the same location/date range. Defaults: GFS, NAM, ECMWF, ICON, GEM; `hrrr` and `ecmwf_aifs` are opt-in (`DEFAULT_COMPARISON_MODELS` in `src/types/modelComparison.ts`).
+
+- **Open-Meteo models:** ECMWF IFS (`ecmwf_ifs`), ECMWF AIFS (`ecmwf_aifs025_single`), ICON (`icon_global`) and GEM (`gem_global`), one `/forecast?models=` request each via `OpenMeteoService.getModelForecast` (cached 2 h), so one failing model doesn't hide the others. Model ids live in `OPEN_METEO_MODELS` (`src/services/openmeteo.ts`); Open-Meteo renames models occasionally, so check them against the live API when something breaks.
+- **Run times:** `getModelRunTime` reads `<host>/data/<model>/static/meta.json` (`last_run_initialisation_time`) and ignores anything older than 48 h (GEM's metadata was months stale when checked), showing "time not reported" instead.
+- **Horizons:** Open-Meteo returns nulls past a model's reach (ICON ~7.5 days, GEM 10, ECMWF 15); those days are dropped and shown as N/A. GEM keeps reporting precipitation chance after its temperatures stop, so a day needs a temperature or precipitation total to count.
+- **Old name:** `ecmwf_proxy` (formerly Open-Meteo's automatic blend) is accepted as an alias for `ecmwf` (`MODEL_ALIASES` in the handler).
 
 - **HRRR (opt-in):** 3 km CONUS-only model; only the synoptic cycles (00/06/12/18Z) that post a full 48h horizon are used. Requests outside CONUS are rejected with a clear error. Values beyond the ~48h deterministic horizon are marked N/A.
 - **NAM:** Lambert Conformal Conic grid; nearest-value extraction handled by `src/utils/gribGrid.ts` (correct curvilinear grid math).
 - **Per-model horizon handling:** each model's values are marked N/A beyond its deterministic horizon.
+- **Run selection (NOMADS):** `findLatestAvailableRun` probes the *last* forecast hour the request needs, newest cycle first. NOAA posts a run's files over an hour or two, so probing an early hour picked runs still being posted and then failed on later hours (`tests/unit/nomads-run-selection.test.ts`).
+- **Precipitation chance (NOMADS):** for GFS/NAM/HRRR this is the share of the day's time steps with precipitation in that single run, not a probability; Open-Meteo rows use Open-Meteo's own value (none for AIFS). See `docs/TODO.md`.
 
 ## Common Tasks
 
@@ -651,7 +660,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer (records saved on disk), Docker deployment, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
-- **Tests:** 1,293 (1,231 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Tests:** 1,308 (1,246 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 

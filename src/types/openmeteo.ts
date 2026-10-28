@@ -209,6 +209,7 @@ export interface OpenMeteoForecastDailyData {
   wind_speed_10m_max?: number[];
   wind_gusts_10m_max?: number[];
   wind_direction_10m_dominant?: number[];
+  relative_humidity_2m_mean?: number[];
 }
 
 /**

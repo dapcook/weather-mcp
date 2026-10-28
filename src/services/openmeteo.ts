@@ -61,6 +61,27 @@ export interface OpenMeteoServiceConfig {
  */
 export const DAILY_RECORD_REFRESH_OVERLAP_DAYS = 100;
 
+/**
+ * Individual forecast models Open-Meteo serves on /forecast (via its `models` parameter) that
+ * the model comparison uses, each with the name of the metadata file that reports its latest run.
+ * Names checked against the live API on 2026-10-28; Open-Meteo renames models occasionally.
+ */
+export const OPEN_METEO_MODELS = {
+  ecmwf_ifs: { metadata: 'ecmwf_ifs' },
+  ecmwf_aifs025_single: { metadata: 'ecmwf_aifs025_single' },
+  icon_global: { metadata: 'dwd_icon' },
+  gem_global: { metadata: 'cmc_gem_gdps' },
+} as const;
+
+export type OpenMeteoModelId = keyof typeof OPEN_METEO_MODELS;
+
+/**
+ * A reported run older than this is treated as unknown. Every model here runs at least twice a
+ * day, so an older time means the metadata file is stale (GEM's was months old when checked),
+ * and showing it would mislabel the forecast.
+ */
+const MODEL_RUN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
 /** A full daily record, plus a note if a saved one could not be brought up to date */
 export interface DailyRecordResult {
   record: OpenMeteoHistoricalResponse;
@@ -943,6 +964,106 @@ export class OpenMeteoService {
     const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
     this.validateForecastResponse(response, hourly);
     return response;
+  }
+
+  /**
+   * Daily forecast from one specific model, rather than Open-Meteo's automatic blend
+   * (used by the model comparison). Days past the model's horizon come back as nulls.
+   *
+   * @param days - Forecast days (1-16)
+   * @param model - One of OPEN_METEO_MODELS
+   */
+  async getModelForecast(
+    latitude: number,
+    longitude: number,
+    days: number,
+    model: OpenMeteoModelId
+  ): Promise<OpenMeteoForecastResponse> {
+    validateLatitude(latitude);
+    validateLongitude(longitude);
+    if (!Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      throw new InvalidLocationError('OpenMeteo', `Unknown forecast model "${String(model)}"`);
+    }
+    if (!Number.isInteger(days) || days < 1 || days > 16) {
+      throw new InvalidLocationError('OpenMeteo', 'Forecast days must be between 1 and 16');
+    }
+
+    const params: Record<string, string | number> = {
+      latitude,
+      longitude,
+      forecast_days: days,
+      models: model,
+      daily: [
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'precipitation_probability_max',
+        'precipitation_sum',
+        'wind_speed_10m_max',
+        'relative_humidity_2m_mean',
+      ].join(','),
+      temperature_unit: 'fahrenheit',
+      wind_speed_unit: 'mph',
+      precipitation_unit: 'inch',
+      timezone: 'auto',
+    };
+
+    const cacheKey = Cache.generateKey('openmeteo-model-forecast', latitude, longitude, days, model);
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached as OpenMeteoForecastResponse;
+      }
+    }
+
+    const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    this.validateForecastResponse(response, false);
+
+    if (CacheConfig.enabled) {
+      // Same 2 hours as other forecasts; models publish new runs every 6-12 hours
+      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
+    }
+    return response;
+  }
+
+  /**
+   * When the latest run of a model started (ISO 8601 UTC), from Open-Meteo's model metadata.
+   * Returns undefined if the metadata can't be read or looks stale, rather than guessing.
+   */
+  async getModelRunTime(model: OpenMeteoModelId): Promise<string | undefined> {
+    if (!Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      return undefined;
+    }
+    const cacheKey = Cache.generateKey('openmeteo-model-run', model);
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached !== undefined) {
+        return (cached as { run?: string }).run;
+      }
+    }
+
+    let run: string | undefined;
+    try {
+      // The metadata lives beside the API, at <host>/data/<model>/static/meta.json
+      const origin = new URL(this.forecastClient.defaults.baseURL ?? '').origin;
+      const response = await this.forecastClient.get<{ last_run_initialisation_time?: unknown }>(
+        `${origin}/data/${OPEN_METEO_MODELS[model].metadata}/static/meta.json`
+      );
+      const seconds = response.data?.last_run_initialisation_time;
+      if (typeof seconds === 'number' && Number.isFinite(seconds)) {
+        const ms = seconds * 1000;
+        const age = Date.now() - ms;
+        if (age >= -60 * 60 * 1000 && age <= MODEL_RUN_MAX_AGE_MS) {
+          run = new Date(ms).toISOString();
+        }
+      }
+    } catch {
+      run = undefined; // the forecast itself still works; only the label loses its run time
+    }
+
+    if (CacheConfig.enabled) {
+      this.cache.set(cacheKey, { run }, 15 * 60 * 1000);
+    }
+    return run;
   }
 
   /**

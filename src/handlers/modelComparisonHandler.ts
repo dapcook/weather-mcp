@@ -3,6 +3,7 @@ import { LocationStore } from '../services/locationStore.js';
 import { ModelComparisonService } from '../services/modelComparison.js';
 import { resolveLocation } from '../utils/locationResolver.js';
 import { validateForecastDays } from '../utils/validation.js';
+import { ALL_COMPARISON_MODELS, DEFAULT_COMPARISON_MODELS } from '../types/modelComparison.js';
 import type { ComparisonModel } from '../types/modelComparison.js';
 
 interface ModelComparisonArgs {
@@ -13,18 +14,34 @@ interface ModelComparisonArgs {
   models?: ComparisonModel[];
 }
 
-function parseModels(models?: unknown): ComparisonModel[] {
+/**
+ * Other names accepted for a model. "ecmwf_proxy" was the old name of the ECMWF row, when it
+ * showed Open-Meteo's automatic blend; it now means the real ECMWF IFS.
+ */
+const MODEL_ALIASES: Record<string, ComparisonModel> = {
+  ecmwf_proxy: 'ecmwf',
+  ecmwf_ifs: 'ecmwf',
+  ifs: 'ecmwf',
+  aifs: 'ecmwf_aifs',
+  ecmwf_aifs025: 'ecmwf_aifs',
+  icon_global: 'icon',
+  dwd_icon: 'icon',
+  gem_global: 'gem',
+  gdps: 'gem',
+};
+
+export function parseModels(models?: unknown): ComparisonModel[] {
   if (!Array.isArray(models)) {
-    return ['gfs', 'nam', 'ecmwf_proxy'];
+    return [...DEFAULT_COMPARISON_MODELS];
   }
 
-  const allowed = new Set<ComparisonModel>(['gfs', 'nam', 'hrrr', 'ecmwf_proxy']);
+  const allowed = new Set<ComparisonModel>(ALL_COMPARISON_MODELS);
   const normalized = models
     .map((item) => String(item).trim().toLowerCase())
-    .map((item) => (item === 'ecmwf' ? 'ecmwf_proxy' : item))
+    .map((item) => MODEL_ALIASES[item] ?? item)
     .filter((item): item is ComparisonModel => allowed.has(item as ComparisonModel));
 
-  return normalized.length > 0 ? Array.from(new Set(normalized)) : ['gfs', 'nam', 'ecmwf_proxy'];
+  return normalized.length > 0 ? Array.from(new Set(normalized)) : [...DEFAULT_COMPARISON_MODELS];
 }
 
 function formatValue(value: number | undefined, digits = 0, suffix = ''): string {
@@ -53,7 +70,10 @@ export async function handleGetModelComparisonForecast(
 
   output += '## Model Availability\n';
   for (const series of comparison.series) {
-    output += `- **${series.label}:** run ${DateTime.fromISO(series.modelRun).toUTC().toFormat('yyyy-LL-dd HH:mm')}Z, horizon ${series.horizonHours}h\n`;
+    const run = series.modelRun
+      ? `run ${DateTime.fromISO(series.modelRun).toUTC().toFormat('yyyy-LL-dd HH:mm')}Z`
+      : 'latest run (time not reported)';
+    output += `- **${series.label}:** ${run}, horizon ${series.horizonHours}h\n`;
   }
   output += '\n';
 
@@ -78,13 +98,10 @@ export async function handleGetModelComparisonForecast(
       const values = series.daily[dayKey];
 
       if (!values) {
-        if (series.model === 'nam') {
-          output += `- **${series.label}:** N/A (NAM deterministic horizon limit ~84h)\n`;
-        } else if (series.model === 'hrrr') {
-          output += `- **${series.label}:** N/A (HRRR deterministic horizon limit ~48h)\n`;
-        } else {
-          output += `- **${series.label}:** N/A\n`;
-        }
+        const pastHorizon = comparison.days.indexOf(dayKey) * 24 >= series.horizonHours - 24;
+        output += pastHorizon
+          ? `- **${series.label}:** N/A (beyond its ~${series.horizonHours}h horizon)\n`
+          : `- **${series.label}:** N/A\n`;
         continue;
       }
 
@@ -102,7 +119,7 @@ export async function handleGetModelComparisonForecast(
   }
 
   output += '---\n';
-  output += '*Comparison includes GFS, NAM, and HRRR model-run data from NOMADS. ECMWF line uses Open-Meteo proxy guidance for long-range context. HRRR is CONUS-only.*\n';
+  output += '*GFS, NAM and HRRR are decoded from NOAA NOMADS model runs; ECMWF, AIFS, ICON and GEM are those models\' own forecasts served by Open-Meteo. HRRR is CONUS-only.*\n';
 
   return {
     content: [
