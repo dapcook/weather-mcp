@@ -2,7 +2,7 @@
 
 Open work on the Weather MCP Server, newest decisions first. This is the short, current list; longer-term ideas live in the [Roadmap](./planning/ROADMAP.md) and [Future Enhancements](./planning/FUTURE_ENHANCEMENTS.md), and what has shipped is in the [Changelog](../CHANGELOG.md).
 
-**Last reviewed:** 2026-10-28, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,254 unit tests passing.
+**Last reviewed:** 2026-10-28, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,256 unit tests passing.
 
 Keep this file honest: when you finish an item, move it to [Done recently](#done-recently) (or delete it), and when you find a new problem, add it here with why it matters.
 
@@ -39,8 +39,12 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 ### 7. Forecast form layout
 - Offered after the climate explorer cleanup: the Forecast tool's form in the web console could use the same tidy-up (grouping, matching control heights). The shared select and number-field styles already apply to it.
 
-### 8. Model comparison: GFS/NAM/HRRR "precipitation chance" is not a probability
-- For the NOMADS models it is the share of the day's 3-hourly steps that have any precipitation in that single run, so a run with light rain all day shows 100% (seen live: GFS 100% next to ECMWF 31%, ICON 33%). The Open-Meteo rows use Open-Meteo's own value. Either rename it for the NOMADS rows (for example "wet hours 100%"), or drop it there and leave chance to the models that have one. The longer-term answer is the ensemble item under Ideas.
+### 8. NOMADS precipitation totals are inflated (bug)
+- **Seen:** in the comparison table for Kansas City on 2026-10-28, GFS showed 6.19 in for Nov 5 while ECMWF and GEM showed 0 to 0.39 in, and GFS totals grew with lead time.
+- **Likely cause:** `extractPointData` in `src/services/nomads.ts` takes the largest `APCP` value in each GRIB file, which is usually the total accumulated since the run started, and `aggregateDaily` then adds those up for the day. It should use the per-interval accumulation (or the difference between consecutive run totals). This also affects `get_forecast` with `source: "nomads"`.
+- **Precipitation "chance" for GFS/NAM/HRRR** is derived from the same values: the share of the day's forecast steps with any precipitation, so it is inflated too, and it is not a probability even when correct. The comparison table now marks it † and explains it; once the totals are fixed, decide whether to keep it, rename it ("wet steps"), or drop it. The longer-term answer is the ensemble item under Ideas.
+- **Also check:** GFS's daily low looked too high next to the other models (72 °F vs 61–69 °F on Oct 28); look at how forecast steps are bucketed into local days.
+- **Done when:** a test with GRIB-like messages carrying both a run total and an interval value sums only the intervals, and a live comparison shows GFS totals in line with the other models.
 
 ### 9. Client configs not yet confirmed in the apps
 - The Cursor and VS Code examples in [CLIENT_SETUP.md](./CLIENT_SETUP.md#connecting-to-a-remote-server-http) follow those clients' documented formats and are marked untested. Confirm each in the app, then remove the "untested" note.
@@ -59,6 +63,7 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 
 All on the `feat/docker-deployment` branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)); details in the [Changelog](../CHANGELOG.md).
 
+- Model comparison shows one aligned table per day with a Range row
 - `get_forecast` can use one chosen model (`model`: ECMWF, AIFS, ICON, GEM, GFS, NAM, HRRR)
 - Model comparison: ECMWF IFS, ECMWF AIFS, ICON and GEM added (replacing the mislabeled "ECMWF proxy"); NOMADS no longer picks a run that is still being posted
 - Climate explorer temperature axis stays fixed while stepping between years

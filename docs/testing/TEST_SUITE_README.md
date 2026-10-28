@@ -8,9 +8,9 @@ Quick reference guide for the Weather MCP test suite.
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 1,316 |
+| **Total Tests** | 1,318 |
 | **Pass Rate** | 99.6% - 99.9% |
-| **Unit Tests** | 1,254 (46 files) |
+| **Unit Tests** | 1,256 (46 files) |
 | **Integration Tests** | 62 (4 files) |
 | **Execution Time (Unit)** | ~2 seconds |
 | **Execution Time (Full)** | ~4-5 minutes |
@@ -48,7 +48,7 @@ npm run test:ui
 
 ```
 tests/
-├── unit/                    46 test files (1,254 tests)
+├── unit/                    46 test files (1,256 tests)
 │   ├── Core Utilities       cache, byte-budget-cache, validation, units, errors
 │   ├── Weather Domain       airQuality, fireWeather, snow, normals, precip-type, climatology
 │   ├── Geospatial          distance, geohash, gribGrid, geography, timezone

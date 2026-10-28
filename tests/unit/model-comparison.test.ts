@@ -229,9 +229,48 @@ describe('model comparison: Open-Meteo models', () => {
       const text = await run({ days: 9, models: ['ecmwf', 'icon', 'gem'] });
       expect(text).toMatch(/- \*\*ECMWF IFS \(Open-Meteo\):\*\* run \d{4}-\d\d-\d\d \d\d:00Z, horizon 360h/);
       expect(text).toContain('- **GEM Global (Canada, via Open-Meteo):** latest run (time not reported), horizon 240h');
-      expect(text).toContain('- **ICON Global (DWD, via Open-Meteo):** N/A (beyond its ~180h horizon)');
-      expect(text).toContain('- **ECMWF IFS (Open-Meteo):** High 70°F / Low 50°F; Precip 40%; Total 0.12 in; Wind 15 mph; Humidity 65%');
+      expect(text).toContain('| ICON (beyond its ~180h reach) | — | — | — | — | — | — |');
+      expect(text).toContain('| ECMWF IFS | 70°F | 50°F | 40% | 0.12 in | 15 mph | 65% |');
       expect(text).not.toMatch(/proxy/i);
+    });
+
+    it('puts each day in one table, numbers right-aligned, with the range across models', async () => {
+      const text = await run({ days: 2, models: ['ecmwf', 'ecmwf_aifs', 'icon', 'gem'] });
+      const days = text.split(/^## /m).filter((section) => section.includes('| Model |'));
+      expect(days).toHaveLength(2);
+      const lines = days[0].trim().split('\n');
+      expect(lines[2]).toBe('| Model | High | Low | Precip chance | Precip total | Peak wind | Humidity |');
+      expect(lines[3]).toBe('|---|---:|---:|---:|---:|---:|---:|');
+      expect(lines.slice(4)).toEqual([
+        '| ECMWF IFS | 70°F | 50°F | 40% | 0.12 in | 15 mph | 65% |',
+        '| ECMWF AIFS | 71°F | 50°F | 40% | 0.12 in | 15 mph | 65% |',
+        '| ICON | 72°F | 50°F | 40% | 0.12 in | 15 mph | 65% |',
+        '| GEM | 73°F | 50°F | 40% | 0.12 in | 15 mph | 65% |',
+        '| **Range** | 70–73°F | 50°F | | 0.12 in | 15 mph | |',
+      ]);
+      expect(text).not.toContain('†'); // no NOMADS rows, so no NOMADS footnote
+    });
+
+    it('marks NOMADS precipitation "chance" and explains it', async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const gfsNomads = {
+        ...failingNomads,
+        getForecast: async () => ({
+          latitude: 39.1, longitude: -94.58, timezone: 'UTC', model: 'NCEP GFS 1.0 deg',
+          model_run: '2026-10-27T18:00:00.000Z', forecast_step_hours: 3,
+          daily: {
+            time: [today], temperature_2m_max: [75], temperature_2m_min: [61], precipitation_probability_max: [100],
+            precipitation_sum: [0.52], wind_speed_10m_max: [13], relative_humidity_2m_mean: [78],
+          },
+        }),
+      } as unknown as NOMADSService;
+      comparison = new ModelComparisonService(gfsNomads, openMeteo);
+
+      const text = await run({ days: 1, models: ['gfs', 'ecmwf'] });
+      expect(text).toContain('| GFS | 75°F | 61°F | 100%† | 0.52 in | 13 mph | 78% |');
+      expect(text).toContain('| ECMWF IFS | 70°F | 50°F | 40% | 0.12 in | 15 mph | 65% |');
+      expect(text).toContain('| **Range** | 70–75°F | 50–61°F | | 0.12–0.52 in | 13–15 mph | |');
+      expect(text).toMatch(/^† For GFS, NAM and HRRR, "precipitation chance" is the share of the day's forecast steps/m);
     });
   });
 });

@@ -4,7 +4,7 @@ import { ModelComparisonService } from '../services/modelComparison.js';
 import { resolveLocation } from '../utils/locationResolver.js';
 import { validateForecastDays } from '../utils/validation.js';
 import { ALL_COMPARISON_MODELS, DEFAULT_COMPARISON_MODELS } from '../types/modelComparison.js';
-import type { ComparisonModel } from '../types/modelComparison.js';
+import type { ComparisonModel, ComparisonDayValues } from '../types/modelComparison.js';
 
 interface ModelComparisonArgs {
   latitude?: number;
@@ -44,9 +44,33 @@ export function parseModels(models?: unknown): ComparisonModel[] {
   return normalized.length > 0 ? Array.from(new Set(normalized)) : [...DEFAULT_COMPARISON_MODELS];
 }
 
+/** Names for the table's Model column; the full source labels are listed above the tables */
+const SHORT_NAMES: Record<ComparisonModel, string> = {
+  gfs: 'GFS',
+  nam: 'NAM',
+  hrrr: 'HRRR',
+  ecmwf: 'ECMWF IFS',
+  ecmwf_aifs: 'ECMWF AIFS',
+  icon: 'ICON',
+  gem: 'GEM',
+};
+
+const NOMADS_MODELS = new Set<ComparisonModel>(['gfs', 'nam', 'hrrr']);
+
+/** "min–max" across models, or one value when they agree; blank when fewer than two have it */
+function formatRange(values: Array<number | undefined>, digits: number, suffix: string): string {
+  const present = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+  if (present.length < 2) {
+    return '';
+  }
+  const lo = Math.min(...present).toFixed(digits);
+  const hi = Math.max(...present).toFixed(digits);
+  return lo === hi ? `${lo}${suffix}` : `${lo}–${hi}${suffix}`;
+}
+
 function formatValue(value: number | undefined, digits = 0, suffix = ''): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return 'N/A';
+    return '—';
   }
 
   return `${value.toFixed(digits)}${suffix}`;
@@ -85,6 +109,8 @@ export async function handleGetModelComparisonForecast(
     output += '\n';
   }
 
+  // One table per day, one row per model, so values line up for comparison
+  const nomadsShown = comparison.series.some((series) => NOMADS_MODELS.has(series.model));
   for (const dayKey of comparison.days) {
     const label = DateTime.fromISO(dayKey, { zone: comparison.timezone }).toLocaleString({
       weekday: 'long',
@@ -92,30 +118,41 @@ export async function handleGetModelComparisonForecast(
       day: 'numeric',
     });
 
-    output += `## ${label}\n`;
+    output += `## ${label}\n\n`;
+    output += '| Model | High | Low | Precip chance | Precip total | Peak wind | Humidity |\n';
+    output += '|---|---:|---:|---:|---:|---:|---:|\n';
 
+    const shown: ComparisonDayValues[] = [];
     for (const series of comparison.series) {
+      const name = SHORT_NAMES[series.model];
       const values = series.daily[dayKey];
 
       if (!values) {
         const pastHorizon = comparison.days.indexOf(dayKey) * 24 >= series.horizonHours - 24;
-        output += pastHorizon
-          ? `- **${series.label}:** N/A (beyond its ~${series.horizonHours}h horizon)\n`
-          : `- **${series.label}:** N/A\n`;
+        const reason = pastHorizon ? ` (beyond its ~${series.horizonHours}h reach)` : ' (no data)';
+        output += `| ${name}${reason} | — | — | — | — | — | — |\n`;
         continue;
       }
 
-      const tempHigh = formatValue(values.temperatureHighF, 0, '°F');
-      const tempLow = formatValue(values.temperatureLowF, 0, '°F');
-      const precipChance = formatValue(values.precipitationChancePct, 0, '%');
-      const precipTotal = formatValue(values.precipitationTotalIn, 2, ' in');
-      const wind = formatValue(values.windMaxMph, 0, ' mph');
-      const humidity = formatValue(values.humidityMeanPct, 0, '%');
+      shown.push(values);
+      // NOMADS "chance" is the share of the run's time steps with precipitation, not a probability
+      const chanceMark = NOMADS_MODELS.has(series.model) && values.precipitationChancePct !== undefined ? '†' : '';
+      output += `| ${name} | ${formatValue(values.temperatureHighF, 0, '°F')} | ${formatValue(values.temperatureLowF, 0, '°F')}` +
+        ` | ${formatValue(values.precipitationChancePct, 0, '%')}${chanceMark} | ${formatValue(values.precipitationTotalIn, 2, ' in')}` +
+        ` | ${formatValue(values.windMaxMph, 0, ' mph')} | ${formatValue(values.humidityMeanPct, 0, '%')} |\n`;
+    }
 
-      output += `- **${series.label}:** High ${tempHigh} / Low ${tempLow}; Precip ${precipChance}; Total ${precipTotal}; Wind ${wind}; Humidity ${humidity}\n`;
+    // How far apart the models are: a narrow range means a more certain forecast
+    if (shown.length >= 2) {
+      output += `| **Range** | ${formatRange(shown.map((v) => v.temperatureHighF), 0, '°F')} | ${formatRange(shown.map((v) => v.temperatureLowF), 0, '°F')}` +
+        ` | | ${formatRange(shown.map((v) => v.precipitationTotalIn), 2, ' in')} | ${formatRange(shown.map((v) => v.windMaxMph), 0, ' mph')} | |\n`;
     }
 
     output += '\n';
+  }
+
+  if (nomadsShown) {
+    output += '† For GFS, NAM and HRRR, "precipitation chance" is the share of the day\'s forecast steps with any precipitation in that single run (so steady light rain shows 100%), not a probability like the other models\' values.\n\n';
   }
 
   output += '---\n';

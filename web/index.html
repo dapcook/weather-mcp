@@ -267,6 +267,8 @@
   .md table { border-collapse: collapse; font-size: 13px; }
   .md th, .md td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
   .md th { background: var(--panel-2); }
+  .md th.al-right, .md td.al-right { text-align: right; font-variant-numeric: tabular-nums; }
+  .md th.al-center, .md td.al-center { text-align: center; }
   pre.raw {
     white-space: pre-wrap; font-family: var(--mono); font-size: 12px;
     background: var(--code-bg); padding: 12px; border-radius: 8px; margin: 12px 0 0;
@@ -1182,12 +1184,15 @@
       if (trimmed.startsWith('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
         flush();
         const head = cells(trimmed);
+        // Column alignment from the separator row: ---: right, :---: center, otherwise left
+        const align = cells(lines[i + 1]).map((c) => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : ''));
+        const td = (tag, c, j) => `<${tag}${align[j] ? ` class="al-${align[j]}"` : ''}>${inline(c)}</${tag}>`;
         i += 2;
         const rows = [];
         while (i < lines.length && lines[i].trim().startsWith('|')) { rows.push(cells(lines[i])); i++; }
         i--;
-        out.push('<div class="table-wrap"><table><thead><tr>' + head.map((c) => `<th>${inline(c)}</th>`).join('') +
-          '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
+        out.push('<div class="table-wrap"><table><thead><tr>' + head.map((c, j) => td('th', c, j)).join('') +
+          '</tr></thead><tbody>' + rows.map((r) => '<tr>' + r.map((c, j) => td('td', c, j)).join('') + '</tr>').join('') +
           '</tbody></table></div>');
         continue;
       }

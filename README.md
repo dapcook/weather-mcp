@@ -1074,8 +1074,9 @@ Shows how models agree or diverge for the same place and dates; when they agree,
 ```
 
 **Returns:**
-- Per-model daily high/low temperature, precipitation chance and total, peak wind, and humidity, within each model's reach
+- One table per day with a row per model (high, low, precipitation chance and total, peak wind, humidity) and a **Range** row showing how far apart the models are; a narrow range means a more certain forecast
 - Each model's run time and horizon, plus notes on models that stop early or failed
+- For GFS, NAM and HRRR, the precipitation "chance" is marked † and explained: it's the share of the run's forecast steps with precipitation, not a probability
 
 ## Using Saved Locations with Weather Tools
 
@@ -1190,13 +1191,13 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,316 tests** across unit (1,254 tests in 46 files) and integration (62 tests in 4 files) suites
+- **1,318 tests** across unit (1,256 tests in 46 files) and integration (62 tests in 4 files) suites
 - **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
 - **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
 - **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (1,254 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Unit Tests** (1,256 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
 - **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
@@ -1265,7 +1266,7 @@ weather-mcp/
 ├── web/
 │   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # 1,254 tests, no network
+│   ├── unit/                    # 1,256 tests, no network
 │   └── integration/             # 62 tests, live APIs
 ├── docs/                        # Documentation (start at docs/README.md)
 ├── Dockerfile, docker-compose.yml, .env.example
@@ -1401,7 +1402,7 @@ This project takes security seriously and implements multiple layers of protecti
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (1,316 tests) with a 100% coverage target on critical utilities
+- Comprehensive test suite (1,318 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 
