@@ -321,6 +321,7 @@ tests/
 │   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
 │   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
 │   ├── nomads-run-selection.test.ts    # NOMADS picks a fully posted run (probes the last hour needed)
+│   ├── nomads-precipitation.test.ts    # NOMADS rain from differenced run totals; partial-day highs/lows left out
 │   ├── forecast-model.test.ts          # get_forecast's model option: models= param, trimmed horizon, missing fields, out-of-area errors (local stub server)
 │   ├── model-comparison.test.ts        # Open-Meteo comparison models: request params, per-model cache, run-time staleness, horizons, aliases (local stub server)
 │   ├── web-climate.test.ts             # /api/climate end to end with a stub Open-Meteo: shape, reuse across baselines, failures not cached, bad input
@@ -339,7 +340,7 @@ tests/
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
 - **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
-- **Unit vs integration:** `tests/unit` (1,256 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
+- **Unit vs integration:** `tests/unit` (1,264 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -590,7 +591,8 @@ Compares models side by side for the same location/date range. Defaults: GFS, NA
 - **NAM:** Lambert Conformal Conic grid; nearest-value extraction handled by `src/utils/gribGrid.ts` (correct curvilinear grid math).
 - **Per-model horizon handling:** each model's values are marked N/A beyond its deterministic horizon.
 - **Run selection (NOMADS):** `findLatestAvailableRun` probes the *last* forecast hour the request needs, newest cycle first. NOAA posts a run's files over an hour or two, so probing an early hour picked runs still being posted and then failed on later hours (`tests/unit/nomads-run-selection.test.ts`).
-- **Precipitation chance (NOMADS):** for GFS/NAM/HRRR this is the share of the day's time steps with precipitation in that single run, not a probability (marked † in the output); Open-Meteo rows use Open-Meteo's own value (none for AIFS). NOMADS precipitation totals are currently inflated (run-total `APCP` values are summed); see `docs/TODO.md` item 8.
+- **Precipitation chance (NOMADS):** for GFS/NAM/HRRR this is the share of the day's time steps with precipitation in that single run, not a probability (marked † in the output); Open-Meteo rows use Open-Meteo's own value (none for AIFS). Each file has two `APCP` messages (run total since the run start, and a recent bucket: GFS 3/6 h, NAM 3 h, HRRR 1 h); `findRunTotalPrecipitation` takes the run total (its `forecastDate` equals the run's reference time) and `precipitationFromRunTotals` differences consecutive steps. Never sum the files' values directly (`tests/unit/nomads-precipitation.test.ts`).
+- **Partial days (NOMADS):** `aggregateDaily` leaves a day's low as NaN unless it has a sample by 06:00 local, and its high unless samples span 13:00-17:00, because runs start and end mid-day.
 - **Output:** one Markdown table per day (`| Model | High | Low | Precip chance | Precip total | Peak wind | Humidity |`, numbers right-aligned with `---:`) plus a **Range** row across models; the web console's `renderMarkdown` honors column alignment.
 
 ## Common Tasks
@@ -666,7 +668,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer (records saved on disk), Docker deployment, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
-- **Tests:** 1,318 (1,256 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Tests:** 1,326 (1,264 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 

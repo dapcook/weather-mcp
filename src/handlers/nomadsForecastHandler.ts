@@ -40,8 +40,10 @@ export async function handleGetNomadsForecast(
     const windMax = forecast.daily.wind_speed_10m_max[i];
     const humidityMean = forecast.daily.relative_humidity_2m_mean[i];
 
-    if (Number.isFinite(high) && Number.isFinite(low)) {
-      output += `**Temperature:** High ${Math.round(high)}°F / Low ${Math.round(low)}°F\n`;
+    // A day the run only partly covers can lack its high or low (see aggregateDaily)
+    if (Number.isFinite(high) || Number.isFinite(low)) {
+      const fmt = (value: number) => (Number.isFinite(value) ? `${Math.round(value)}°F` : '— (not covered by this run)');
+      output += `**Temperature:** High ${fmt(high)} / Low ${fmt(low)}\n`;
     }
 
     output += `**Precipitation Chance:** ${Math.round(precipChance)}%\n`;
@@ -59,7 +61,7 @@ export async function handleGetNomadsForecast(
   }
 
   output += '---\n';
-  output += '*Data source: NOMADS/NCEP GFS (deterministic model run). Precipitation chance is derived from 6-hour forecast interval signals in the selected day.*\n';
+  output += '*Data source: NOMADS/NCEP GFS (deterministic model run). Precipitation chance is the share of the day\'s forecast steps with measurable precipitation in this one run, not a probability.*\n';
 
   return {
     content: [

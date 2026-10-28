@@ -38,7 +38,52 @@ interface TimeStepData {
   temperatureF?: number;
   humidityPct?: number;
   windMph?: number;
+  /** Precipitation since the run started, as the file reports it */
+  precipTotalSinceRunIn?: number;
+  /** Precipitation in the interval ending at this step (from consecutive run totals) */
   precipitationIn?: number;
+}
+
+/**
+ * The APCP message holding precipitation accumulated since the run started.
+ *
+ * Most NOMADS files carry two APCP messages: that run total, and a "bucket" for the last
+ * few hours (GFS 3 or 6 h, NAM 3 h, HRRR 1 h). The decoder reports each message's
+ * forecastDate as the start of its accumulation period, so the run total is the one that
+ * starts at the run's reference time. (Taking the larger of the two, as this code once did,
+ * picked the run total and then summed run totals, inflating daily totals more and more with
+ * lead time: 6 in for a day other models put under 0.4 in.)
+ */
+export function findRunTotalPrecipitation<T extends Pick<GribMessage, 'varAbbrev' | 'forecastDate' | 'referenceDate'>>(
+  messages: T[],
+  runStart: Date
+): T | undefined {
+  return messages.find((m) =>
+    m.varAbbrev === 'APCP' &&
+    m.forecastDate instanceof Date &&
+    m.forecastDate.getTime() === (m.referenceDate ?? runStart).getTime()
+  );
+}
+
+/**
+ * Precipitation in each interval from the run totals at consecutive steps (the first
+ * step, the analysis, has none). A missing total leaves that step unknown and the next
+ * known total covers both intervals. Small negative differences from rounding become 0.
+ */
+export function precipitationFromRunTotals(totals: Array<number | undefined>): Array<number | undefined> {
+  let previous = 0;
+  return totals.map((total, i) => {
+    if (i === 0) {
+      previous = total ?? 0;
+      return undefined;
+    }
+    if (typeof total !== 'number' || !Number.isFinite(total)) {
+      return undefined;
+    }
+    const interval = Math.max(0, total - previous);
+    previous = total;
+    return interval;
+  });
 }
 
 interface ModelFetchConfig {
@@ -97,6 +142,15 @@ const NAM_HOURS_PER_STEP = 3;
 const HRRR_HOURS_PER_STEP = 3;
 const MPS_TO_MPH = 2.2369362921;
 const MM_TO_IN = 0.0393701;
+
+/**
+ * Local hours a day's samples must reach for its low and high to count. Lows usually come
+ * around dawn and highs mid-afternoon; with 3-hourly steps a whole day always has a sample
+ * by 6 am and samples on both sides of 1-5 pm.
+ */
+const LOW_NEEDS_SAMPLE_BY_HOUR = 6;
+const HIGH_WINDOW_START_HOUR = 13;
+const HIGH_WINDOW_END_HOUR = 17;
 
 // HRRR's CONUS domain, approximated as a bounding box for a cheap pre-check.
 // The actual grid is a Lambert Conformal Conic projection, not a rectangle,
@@ -232,6 +286,10 @@ export class NOMADSService {
       const point = this.extractPointData(messages, latitude, longitude, run.referenceDate, hour);
       points.push(point);
     }
+    const intervals = precipitationFromRunTotals(points.map((point) => point.precipTotalSinceRunIn));
+    points.forEach((point, i) => {
+      point.precipitationIn = intervals[i];
+    });
 
     const timezone = guessTimezoneFromCoords(latitude, longitude);
     const daily = this.aggregateDaily(points, timezone, clampedDays);
@@ -381,15 +439,11 @@ export class NOMADSService {
     const humidity = messages.find((m) => m.varAbbrev === 'RH' && m.key.includes('2 in above ground'));
     const ugrd = messages.find((m) => m.varAbbrev === 'UGRD' && m.key.includes('10 in above ground'));
     const vgrd = messages.find((m) => m.varAbbrev === 'VGRD' && m.key.includes('10 in above ground'));
-    const precipCandidates = messages.filter((m) => m.varAbbrev === 'APCP');
+    const runTotalPrecip = findRunTotalPrecipitation(messages, referenceDate);
 
     const timestamp = surfaceTemp?.forecastDate ?? new Date(referenceDate.getTime() + forecastHour * 3600 * 1000);
 
-    const precipitationMmValues = precipCandidates
-      .map((msg) => this.extractNearestValue(msg, latitude, longitude))
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-    const intervalPrecipMm = precipitationMmValues.length > 0 ? Math.max(...precipitationMmValues) : 0;
+    const runTotalMm = runTotalPrecip ? this.extractNearestValue(runTotalPrecip, latitude, longitude) : undefined;
 
     const temperatureK = surfaceTemp ? this.extractNearestValue(surfaceTemp, latitude, longitude) : undefined;
     const humidityPct = humidity ? this.extractNearestValue(humidity, latitude, longitude) : undefined;
@@ -406,7 +460,7 @@ export class NOMADSService {
       temperatureF: typeof temperatureK === 'number' ? ((temperatureK - 273.15) * 9) / 5 + 32 : undefined,
       humidityPct,
       windMph,
-      precipitationIn: intervalPrecipMm * MM_TO_IN,
+      precipTotalSinceRunIn: typeof runTotalMm === 'number' ? runTotalMm * MM_TO_IN : undefined,
     };
   }
 
@@ -430,10 +484,14 @@ export class NOMADSService {
       totalSteps: number;
       humidity: number[];
       wind: number[];
+      /** Earliest and latest local hour sampled, to tell a whole day from a partial one */
+      firstHour: number;
+      lastHour: number;
     }>();
 
     for (const point of points) {
-      const dayKey = DateTime.fromJSDate(point.timestamp, { zone: 'utc' }).setZone(timezone).toISODate();
+      const local = DateTime.fromJSDate(point.timestamp, { zone: 'utc' }).setZone(timezone);
+      const dayKey = local.toISODate();
       if (!dayKey) {
         continue;
       }
@@ -448,9 +506,13 @@ export class NOMADSService {
           totalSteps: 0,
           humidity: [],
           wind: [],
+          firstHour: local.hour,
+          lastHour: local.hour,
         };
         buckets.set(dayKey, bucket);
       }
+      bucket.firstHour = Math.min(bucket.firstHour, local.hour);
+      bucket.lastHour = Math.max(bucket.lastHour, local.hour);
 
       if (typeof point.temperatureF === 'number') {
         bucket.highs.push(point.temperatureF);
@@ -458,9 +520,15 @@ export class NOMADSService {
       }
 
       if (typeof point.precipitationIn === 'number') {
-        bucket.precipIn += point.precipitationIn;
-        if (point.precipitationIn >= 0.01) {
-          bucket.precipSteps += 1;
+        // The interval ends at this step, so it belongs to the day it fell in: one ending
+        // exactly at local midnight counts for the day before
+        const precipDayKey = DateTime.fromMillis(point.timestamp.getTime() - 1, { zone: 'utc' }).setZone(timezone).toISODate();
+        const precipBucket = precipDayKey && precipDayKey !== dayKey ? buckets.get(precipDayKey) : bucket;
+        if (precipBucket) {
+          precipBucket.precipIn += point.precipitationIn;
+          if (point.precipitationIn >= 0.01) {
+            precipBucket.precipSteps += 1;
+          }
         }
       }
 
@@ -482,15 +550,25 @@ export class NOMADSService {
       : allSortedDays;
     const sortedDays = (futureDays.length > 0 ? futureDays : allSortedDays).slice(0, days);
 
+    // A run starts and ends partway through a day (an 18Z run starts at 1 pm in Kansas City),
+    // so the first and last days can be missing their night or afternoon. A low that misses
+    // the early morning, or a high that misses the afternoon, would be wrong (a 72 °F "low"
+    // next to other models' 61 °F), so those are left out (NaN) rather than shown.
+    const coversLow = (day: string) => (buckets.get(day)?.firstHour ?? 24) <= LOW_NEEDS_SAMPLE_BY_HOUR;
+    const coversHigh = (day: string) => {
+      const bucket = buckets.get(day);
+      return !!bucket && bucket.firstHour <= HIGH_WINDOW_START_HOUR && bucket.lastHour >= HIGH_WINDOW_END_HOUR;
+    };
+
     return {
       time: sortedDays,
       temperature_2m_max: sortedDays.map((day) => {
         const values = buckets.get(day)?.highs ?? [];
-        return values.length > 0 ? Math.round(Math.max(...values)) : NaN;
+        return values.length > 0 && coversHigh(day) ? Math.round(Math.max(...values)) : NaN;
       }),
       temperature_2m_min: sortedDays.map((day) => {
         const values = buckets.get(day)?.lows ?? [];
-        return values.length > 0 ? Math.round(Math.min(...values)) : NaN;
+        return values.length > 0 && coversLow(day) ? Math.round(Math.min(...values)) : NaN;
       }),
       precipitation_probability_max: sortedDays.map((day) => {
         const bucket = buckets.get(day);
