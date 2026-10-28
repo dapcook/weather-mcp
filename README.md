@@ -518,16 +518,21 @@ Get weather forecast for any location worldwide.
 - `granularity` (optional): "daily" or "hourly" (default: "daily")
 - `include_precipitation_probability` (optional): Include rain chances (default: true)
 - `include_normals` (optional): Include climate normals for comparison (default: false, NEW in v1.2.0)
-- `source` (optional): "auto" (default), "noaa" (US only), or "openmeteo" (global)
+- `source` (optional): "auto" (default), "noaa" (US only), "openmeteo" (global), or "nomads" (NOAA GFS model run)
+- `model` (optional): get the forecast from one specific weather model instead: `"ecmwf"` (ECMWF IFS, 15 days), `"ecmwf_aifs"` (ECMWF's AI model, 15 days), `"icon"` (Germany, ~7.5 days), `"gem"` (Canada, 10 days), `"gfs"` (NOAA, 16 days), `"nam"` (NOAA, continental US, ~3 days) or `"hrrr"` (NOAA 3 km, continental US, ~2 days). Works with daily and hourly forecasts
 
 **Description:**
 Automatically selects the best data source: NOAA for US locations (more detailed) or Open-Meteo for international locations. Supports extended forecasts up to 16 days. Includes sunrise/sunset times, daylight duration, temperature, precipitation, wind, and UV index.
+
+With `model`, the forecast is that one model's own output, served by Open-Meteo (not blended with other models), anywhere in the world including the US. The header names the model and the run it came from (when Open-Meteo reports it). Days past the model's reach are left out with a note, as are fields a model doesn't provide (most single models have no UV index; AIFS has no gusts or precipitation chance). NAM and HRRR cover the continental US only. `model` can't be combined with `source: "noaa"` or `"nomads"`. To see several models side by side, use [get_model_comparison_forecast](#18-get_model_comparison_forecast-new---unreleased).
 
 **Examples:**
 ```
 "Get a 7-day forecast for Paris (48.8534, 2.3488)"
 "Hourly forecast for Tokyo for the next 3 days"
 "16-day extended forecast for Sydney, Australia"
+"What does the ECMWF model say for Kansas City this week?"
+"Hourly HRRR forecast for Dallas for tomorrow"
 ```
 
 **Returns:**
@@ -1185,13 +1190,13 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,308 tests** across unit (1,246 tests in 45 files) and integration (62 tests in 4 files) suites
+- **1,316 tests** across unit (1,254 tests in 46 files) and integration (62 tests in 4 files) suites
 - **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
 - **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
 - **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (1,246 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Unit Tests** (1,254 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
 - **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
@@ -1260,7 +1265,7 @@ weather-mcp/
 ├── web/
 │   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # 1,246 tests, no network
+│   ├── unit/                    # 1,254 tests, no network
 │   └── integration/             # 62 tests, live APIs
 ├── docs/                        # Documentation (start at docs/README.md)
 ├── Dockerfile, docker-compose.yml, .env.example
@@ -1396,7 +1401,7 @@ This project takes security seriously and implements multiple layers of protecti
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (1,308 tests) with a 100% coverage target on critical utilities
+- Comprehensive test suite (1,316 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 

@@ -178,7 +178,7 @@ export async function shutdownServices(services: WeatherServices): Promise<void>
 const TOOL_DEFINITIONS = {
   get_forecast: {
     name: 'get_forecast' as const,
-    description: 'Get future weather forecast for a location (global coverage). Use this for upcoming weather predictions (e.g., "tomorrow", "this week", "next 7 days", "hourly forecast"). Returns forecast data including temperature, precipitation, wind, conditions, and sunrise/sunset times. Supports both daily and hourly granularity. Automatically selects best data source: NOAA for US locations (more detailed), Open-Meteo for international locations. For current weather, use get_current_conditions. For past weather, use get_historical_weather. Can use either coordinates OR a saved location name (e.g., location_name="home"). If this tool returns an error, check the error message for status page links and consider using check_service_status to verify API availability.',
+    description: 'Get future weather forecast for a location (global coverage). Use this for upcoming weather predictions (e.g., "tomorrow", "this week", "next 7 days", "hourly forecast"). Returns forecast data including temperature, precipitation, wind, conditions, and sunrise/sunset times. Supports both daily and hourly granularity. Automatically selects best data source: NOAA for US locations (more detailed), Open-Meteo for international locations. Set model to get one specific weather model\'s forecast instead (ECMWF, ECMWF AIFS, ICON, GEM, GFS, NAM, HRRR). For current weather, use get_current_conditions. For past weather, use get_historical_weather. Can use either coordinates OR a saved location name (e.g., location_name="home"). If this tool returns an error, check the error message for status page links and consider using check_service_status to verify API availability.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -231,6 +231,11 @@ const TOOL_DEFINITIONS = {
           description: 'Data source: "auto" (default), "noaa" (US only), "openmeteo" (global), or "nomads" (NCEP GFS model run, global)',
           enum: ['auto', 'noaa', 'openmeteo', 'nomads'],
           default: 'auto'
+        },
+        model: {
+          type: 'string' as const,
+          description: 'Get the forecast from one specific weather model instead of the usual source: "ecmwf" (ECMWF IFS, global, 15 days), "ecmwf_aifs" (ECMWF AI model, 15 days), "icon" (Germany\'s DWD, ~7.5 days), "gem" (Canada, 10 days), "gfs" (NOAA, 16 days), "nam" (NOAA, continental US, ~3 days) or "hrrr" (NOAA 3 km, continental US, ~2 days). Served by Open-Meteo, so use it with source "auto" or "openmeteo". Days past the model\'s reach are left out. To see several models side by side, use get_model_comparison_forecast.',
+          enum: ['ecmwf', 'ecmwf_aifs', 'icon', 'gem', 'gfs', 'nam', 'hrrr']
         }
       },
       required: []

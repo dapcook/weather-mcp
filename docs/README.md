@@ -134,7 +134,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 
 - **Current Version:** 1.7.0, plus unreleased features (see the [CHANGELOG](../CHANGELOG.md))
 - **Security Posture:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10)
-- **Tests:** 1,308 (1,246 unit, 62 integration)
+- **Tests:** 1,316 (1,254 unit, 62 integration)
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 - **Risk Level:** LOW (v1.6.0 audit)
 

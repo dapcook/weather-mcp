@@ -62,18 +62,84 @@ export interface OpenMeteoServiceConfig {
 export const DAILY_RECORD_REFRESH_OVERLAP_DAYS = 100;
 
 /**
- * Individual forecast models Open-Meteo serves on /forecast (via its `models` parameter) that
- * the model comparison uses, each with the name of the metadata file that reports its latest run.
- * Names checked against the live API on 2026-10-28; Open-Meteo renames models occasionally.
+ * Individual forecast models Open-Meteo serves on /forecast (via its `models` parameter), used
+ * by the model comparison and by get_forecast's `model` option, each with the name of the
+ * metadata file that reports its latest run. Names checked against the live API on 2026-10-28;
+ * Open-Meteo renames models occasionally.
  */
 export const OPEN_METEO_MODELS = {
   ecmwf_ifs: { metadata: 'ecmwf_ifs' },
   ecmwf_aifs025_single: { metadata: 'ecmwf_aifs025_single' },
   icon_global: { metadata: 'dwd_icon' },
   gem_global: { metadata: 'cmc_gem_gdps' },
+  gfs_global: { metadata: 'ncep_gfs013' },
+  ncep_nam_conus: { metadata: 'ncep_nam_conus' },
+  ncep_hrrr_conus: { metadata: 'ncep_hrrr_conus' },
 } as const;
 
 export type OpenMeteoModelId = keyof typeof OPEN_METEO_MODELS;
+
+/**
+ * Models a user can ask get_forecast for, by the same short names the model comparison uses.
+ * Reach is how far each model's free output goes (checked against the live API on 2026-10-28).
+ */
+export const FORECAST_MODELS = {
+  ecmwf: { id: 'ecmwf_ifs', label: 'ECMWF IFS (European Centre)', reach: '15 days' },
+  ecmwf_aifs: { id: 'ecmwf_aifs025_single', label: 'ECMWF AIFS (European Centre AI model)', reach: '15 days' },
+  icon: { id: 'icon_global', label: 'ICON Global (Germany, DWD)', reach: 'about 7.5 days' },
+  gem: { id: 'gem_global', label: 'GEM Global (Canada, ECCC)', reach: '10 days' },
+  gfs: { id: 'gfs_global', label: 'GFS (NOAA)', reach: '16 days' },
+  nam: { id: 'ncep_nam_conus', label: 'NAM CONUS (NOAA)', reach: 'about 3 days, continental US only' },
+  hrrr: { id: 'ncep_hrrr_conus', label: 'HRRR (NOAA)', reach: 'about 2 days, continental US only' },
+} as const satisfies Record<string, { id: OpenMeteoModelId; label: string; reach: string }>;
+
+export type ForecastModel = keyof typeof FORECAST_MODELS;
+
+const OUTSIDE_MODEL_AREA =
+  'This model has no forecast for this location; it may not cover it (NAM and HRRR cover the continental US only). ' +
+  'Try "gfs", "ecmwf", "icon" or "gem", which are global.';
+
+/**
+ * Turn the API's nulls (a variable a model doesn't provide, or hours past its run) into missing
+ * entries, which is what the forecast formatter checks for. Without this, a model with no UV
+ * index (most single models) would crash the formatter, and a null temperature would print as 0°F.
+ */
+function nullsToMissing(block: object | undefined): void {
+  if (!block) {
+    return;
+  }
+  for (const values of Object.values(block)) {
+    if (Array.isArray(values)) {
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === null) {
+          delete values[i];
+        }
+      }
+    }
+  }
+}
+
+/** Cut every series in a block to its first `length` entries */
+function truncateSeries(block: object, length: number): void {
+  for (const [key, values] of Object.entries(block)) {
+    if (Array.isArray(values)) {
+      (block as Record<string, unknown[]>)[key] = values.slice(0, length);
+    }
+  }
+}
+
+/** Entries up to the last one where `values` has data, i.e. how far a model's run reaches */
+function lengthWithData(values: unknown[] | undefined): number {
+  if (!values) {
+    return 0;
+  }
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (typeof values[i] === 'number') {
+      return i + 1;
+    }
+  }
+  return 0;
+}
 
 /**
  * A reported run older than this is treated as unknown. Every model here runs at least twice a
@@ -926,7 +992,8 @@ export class OpenMeteoService {
     latitude: number,
     longitude: number,
     days: number = 7,
-    hourly: boolean = false
+    hourly: boolean = false,
+    model?: OpenMeteoModelId
   ): Promise<OpenMeteoForecastResponse> {
     // Validate coordinates
     validateLatitude(latitude);
@@ -940,29 +1007,59 @@ export class OpenMeteoService {
       );
     }
 
-    // Build parameters
-    const params = this.buildForecastParams(latitude, longitude, days, hourly);
+    if (model !== undefined && !Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      throw new InvalidLocationError('OpenMeteo', `Unknown forecast model "${String(model)}"`);
+    }
 
-    // Check cache first
+    // Build parameters; without a model, Open-Meteo picks and blends models itself ("best match")
+    const params = this.buildForecastParams(latitude, longitude, days, hourly);
+    if (model) {
+      params.models = model;
+    }
+
+    const cacheKey = Cache.generateKey('openmeteo-forecast', latitude, longitude, days, hourly, model ?? 'best_match');
     if (CacheConfig.enabled) {
-      const cacheKey = Cache.generateKey('openmeteo-forecast', latitude, longitude, days, hourly);
       const cached = this.cache.get(cacheKey);
       if (cached) {
         return cached as OpenMeteoForecastResponse;
       }
-
-      const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
-      this.validateForecastResponse(response, hourly);
-
-      // Cache for 2 hours (forecasts update regularly)
-      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
-
-      return response;
     }
 
-    // No caching
-    const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    let response: OpenMeteoForecastResponse;
+    try {
+      response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    } catch (error) {
+      // A regional model asked for a place outside its area: Open-Meteo answers 400 "No data is
+      // available for this location", which the shared handler words for the historical archive
+      if (model && error instanceof ApiError && /No data is available for this location/i.test(error.userMessage)) {
+        throw new DataNotFoundError('OpenMeteo', OUTSIDE_MODEL_AREA);
+      }
+      throw error;
+    }
     this.validateForecastResponse(response, hourly);
+    nullsToMissing(response.daily);
+    nullsToMissing(response.hourly);
+
+    if (model) {
+      // A single model stops at its horizon (ICON ~7.5 days, NAM ~3); drop the empty tail
+      // rather than printing days with no forecast. No data at all means the place is outside
+      // the model's area (NAM and HRRR cover the continental US only).
+      const dayCount = lengthWithData(response.daily?.temperature_2m_max);
+      if (response.daily) {
+        truncateSeries(response.daily, dayCount);
+      }
+      if (response.hourly) {
+        truncateSeries(response.hourly, lengthWithData(response.hourly.temperature_2m));
+      }
+      if (dayCount === 0 && lengthWithData(response.hourly?.temperature_2m) === 0) {
+        throw new DataNotFoundError('OpenMeteo', OUTSIDE_MODEL_AREA);
+      }
+    }
+
+    if (CacheConfig.enabled) {
+      // Cache for 2 hours (forecasts update regularly)
+      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
+    }
     return response;
   }
 

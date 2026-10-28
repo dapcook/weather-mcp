@@ -2,7 +2,7 @@
 
 Open work on the Weather MCP Server, newest decisions first. This is the short, current list; longer-term ideas live in the [Roadmap](./planning/ROADMAP.md) and [Future Enhancements](./planning/FUTURE_ENHANCEMENTS.md), and what has shipped is in the [Changelog](../CHANGELOG.md).
 
-**Last reviewed:** 2026-10-28, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,246 unit tests passing.
+**Last reviewed:** 2026-10-28, with the Docker/web console branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)) at 1,254 unit tests passing.
 
 Keep this file honest: when you finish an item, move it to [Done recently](#done-recently) (or delete it), and when you find a new problem, add it here with why it matters.
 
@@ -59,6 +59,7 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 
 All on the `feat/docker-deployment` branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)); details in the [Changelog](../CHANGELOG.md).
 
+- `get_forecast` can use one chosen model (`model`: ECMWF, AIFS, ICON, GEM, GFS, NAM, HRRR)
 - Model comparison: ECMWF IFS, ECMWF AIFS, ICON and GEM added (replacing the mislabeled "ECMWF proxy"); NOMADS no longer picks a run that is still being posted
 - Climate explorer temperature axis stays fixed while stepping between years
 - Climate explorer records saved on disk, so restarts and rebuilds no longer repeat the download (about 680 Open-Meteo calls per place); refreshes fetch only the newest days, and a failed refresh shows the saved data with a note

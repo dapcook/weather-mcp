@@ -120,7 +120,7 @@ tests/
 
 ## Key Features (18 MCP Tools)
 
-1. **get_forecast** - Up to 16-day forecasts (NOAA/Open-Meteo auto-select by location); precipitation type; climate normals; snow/ice; timezone-aware output
+1. **get_forecast** - Up to 16-day forecasts (NOAA/Open-Meteo auto-select by location), or one chosen model's forecast (`model`: ecmwf, ecmwf_aifs, icon, gem, gfs, nam, hrrr, via Open-Meteo); precipitation type; climate normals; snow/ice; timezone-aware output
 2. **get_forecast_nomads** - Raw forecast from the latest NOMADS/NCEP GFS model run (global)
 3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF IFS, ECMWF AIFS, ICON, GEM (Open-Meteo) side by side; HRRR (CONUS-only) and AIFS are opt-in
 4. **get_current_conditions** - Current weather + optional fire weather indices (NOAA, US only); climate normals; snow depth
@@ -321,6 +321,7 @@ tests/
 │   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
 │   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
 │   ├── nomads-run-selection.test.ts    # NOMADS picks a fully posted run (probes the last hour needed)
+│   ├── forecast-model.test.ts          # get_forecast's model option: models= param, trimmed horizon, missing fields, out-of-area errors (local stub server)
 │   ├── model-comparison.test.ts        # Open-Meteo comparison models: request params, per-model cache, run-time staleness, horizons, aliases (local stub server)
 │   ├── web-climate.test.ts             # /api/climate end to end with a stub Open-Meteo: shape, reuse across baselines, failures not cached, bad input
 │   └── ncei.test.ts                    # NCEI service
@@ -338,7 +339,7 @@ tests/
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
 - **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
-- **Unit vs integration:** `tests/unit` (1,246 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
+- **Unit vs integration:** `tests/unit` (1,254 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -581,6 +582,10 @@ Compares models side by side for the same location/date range. Defaults: GFS, NA
 - **Horizons:** Open-Meteo returns nulls past a model's reach (ICON ~7.5 days, GEM 10, ECMWF 15); those days are dropped and shown as N/A. GEM keeps reporting precipitation chance after its temperatures stop, so a day needs a temperature or precipitation total to count.
 - **Old name:** `ecmwf_proxy` (formerly Open-Meteo's automatic blend) is accepted as an alias for `ecmwf` (`MODEL_ALIASES` in the handler).
 
+### get_forecast with `model`
+
+`model` (ecmwf, ecmwf_aifs, icon, gem, gfs, nam, hrrr; `FORECAST_MODELS` in `src/services/openmeteo.ts`) makes `get_forecast` return that model's own forecast from Open-Meteo (`getForecast(..., model)` adds `models=`), daily or hourly, anywhere, bypassing NOAA/NOMADS; combining it with `source: "noaa"`/`"nomads"` is an error. Open-Meteo returns nulls for fields a model lacks and past its run; `getForecast` turns nulls into missing entries (the formatter checks `!== undefined`; a null would print 0°F or crash on `toFixed`), and for a chosen model drops the empty tail so only days with data are shown, with a note. A regional model outside its area (NAM/HRRR outside CONUS) gets a 400 from Open-Meteo, rethrown as `DataNotFoundError` with an explanation. Tests: `tests/unit/forecast-model.test.ts`.
+
 - **HRRR (opt-in):** 3 km CONUS-only model; only the synoptic cycles (00/06/12/18Z) that post a full 48h horizon are used. Requests outside CONUS are rejected with a clear error. Values beyond the ~48h deterministic horizon are marked N/A.
 - **NAM:** Lambert Conformal Conic grid; nearest-value extraction handled by `src/utils/gribGrid.ts` (correct curvilinear grid math).
 - **Per-model horizon handling:** each model's values are marked N/A beyond its deterministic horizon.
@@ -660,7 +665,7 @@ npm audit              # Review advisories; known open ones are noted under Proj
 - **Status:** Production Ready ✅
 - **Unreleased additions:** Web console, climate explorer (records saved on disk), Docker deployment, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
 - **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
-- **Tests:** 1,308 (1,246 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Tests:** 1,316 (1,254 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
 - **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
 - **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 
