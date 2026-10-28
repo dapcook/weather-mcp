@@ -221,8 +221,10 @@ export class NOMADSService {
     // Fail fast with a clear error if the decoder can't load; otherwise the run
     // probe below would swallow each decode failure and report runs unreachable
     const parseGrib = await loadGribParser();
-    const run = await this.findLatestAvailableRun(latitude, longitude, model, parseGrib);
     const maxForecastHour = Math.min(clampedDays * 24, model.horizonHours);
+    // The last forecast hour this request will download
+    const lastHour = Math.max(model.stepHours, Math.floor(maxForecastHour / model.stepHours) * model.stepHours);
+    const run = await this.findLatestAvailableRun(latitude, longitude, model, parseGrib, lastHour);
     const points: TimeStepData[] = [];
 
     for (let hour = 0; hour <= maxForecastHour; hour += model.stepHours) {
@@ -255,7 +257,8 @@ export class NOMADSService {
     latitude: number,
     longitude: number,
     model: ModelFetchConfig,
-    parseGrib: GribParser
+    parseGrib: GribParser,
+    probeHour: number
   ): Promise<{ date: string; cycle: string; referenceDate: Date }> {
     const now = DateTime.utc();
     const candidateDates = Array.from({ length: model.candidateLookbackDays + 1 }, (_, idx) =>
@@ -266,8 +269,10 @@ export class NOMADSService {
       const dateStr = candidateDate.toFormat('yyyyLLdd');
 
       for (const cycle of model.availableCycles) {
-        const probeHour = model.stepHours;
-
+        // Probe the LAST hour the request needs, not the first: NOAA posts a run's files over
+        // an hour or two, so a run still being posted has its early hours but not its later
+        // ones. Probing an early hour picked such runs and then failed with "file not found";
+        // probing the last one skips to the previous complete run instead.
         try {
           const messages = await this.fetchForecastMessages(dateStr, cycle, probeHour, latitude, longitude, model, parseGrib);
 
