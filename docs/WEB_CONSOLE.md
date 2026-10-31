@@ -18,20 +18,22 @@ npm install        # first time only
 npm run web
 ```
 
-`npm run web` compiles the TypeScript (`npm run build`) and then starts the console. When the terminal shows `Weather MCP web console running at http://127.0.0.1:8787`, open **http://127.0.0.1:8787** in a browser.
+`npm run web` compiles the TypeScript (`npm run build`) and then starts the console. When the terminal shows `Weather MCP web server running at http://127.0.0.1:8787`, open **http://127.0.0.1:8787** in a browser.
 
-The status pill in the top-right corner shows **Connected · 18 tools** once the console has started the MCP server. Stop the console with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+The status pill in the top-right corner shows **Connected · 18 tools** once the console has loaded the tool list. Stop the console with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
 You can link straight to a tool or view with a URL hash, for example `http://127.0.0.1:8787/#get_forecast` or `http://127.0.0.1:8787/#climate`. Without a hash, the console reopens the last tool you used.
 
 ## Running tools
 
 1. **Pick a tool** from the sidebar. Tools are grouped into Forecasts, Now & alerts, Environment & hazards, Locations, and System. Type in **Filter tools…** to narrow the list by name.
-2. **Fill in the form.** Each form is built from the tool's MCP input schema, so every parameter the AI sees is here, with its description underneath. Required fields are marked with a red `*`. Fields with a default show it as a placeholder; leave them empty to use the default.
-   - Lists of choices (such as models) are chips you can toggle.
+2. **Fill in the form.** Each form is built from the tool's MCP input schema, so every parameter the AI sees is here. Forms are kept compact so the results get the room:
+   - Coordinate-based tools have a one-line location bar above the form (see [Choosing a location](#choosing-a-location)); the latitude, longitude and location-name fields themselves are folded away behind **Coordinates**.
+   - Field explanations are hidden; hover a field's name to read its explanation, or click **Show help** (next to Run) to show them all. The choice is remembered.
+   - On/off options sit together in one row of chips; lists of choices (such as models) are chips too.
+   - Required fields are marked with a red `*`. Fields with a default show it as a placeholder; leave them empty to use the default.
    - Free-form lists are comma-separated.
-   - Coordinate-based tools have a location helper above the form (see [Choosing a location](#choosing-a-location)).
-3. **Click Run.** The result appears below with an **OK** or **Error** badge and how long the call took. NOMADS and model-comparison tools download model data and can take up to a minute.
+3. **Click Run.** The result appears below with an **OK** or **Error** badge and how long the call took. NOMADS and model-comparison tools download model data and can take up to a minute. After a successful run the form folds into a single line summarizing what you asked for (for example "📍 64029 · 3 days · gfs, ecmwf"), with **Edit** to unfold it and **Run again** to repeat the call. A failed run leaves the form open so you can fix it.
 
 In the result card:
 
@@ -45,7 +47,7 @@ Saving or removing a location with `save_location` or `remove_saved_location` up
 
 ## Choosing a location
 
-Every tool that takes coordinates has a location helper with three options:
+Every tool that takes coordinates has a location bar with three ways to pick a place, followed by the place that will be used (📍) and a **Coordinates** button:
 
 | Option | What it does |
 |---|---|
@@ -53,15 +55,16 @@ Every tool that takes coordinates has a location helper with three options:
 | **Find a place** | Searches OpenStreetMap (Nominatim) by name. Type a city, town, or place, press <kbd>Enter</kbd> or **Search**, and click a result to fill in its coordinates. |
 | **Use my location** | Asks the browser for your current position. |
 
-You can also type coordinates into the latitude and longitude fields yourself. The `location_name` and `alias` fields autocomplete from your saved locations.
+To type coordinates or a saved name yourself, click **Coordinates** to unfold the latitude, longitude and location-name fields; the 📍 readout follows what you type. The `location_name` and `alias` fields autocomplete from your saved locations.
 
 ## Radar maps
 
-`get_weather_imagery` returns RainViewer radar tiles, which on their own are just colored precipitation with no geography. The console draws them over an Esri basemap with state lines and coastlines, with highways and place names layered on top, and a red pin at the requested location.
+`get_weather_imagery` returns radar overlays from NOAA/NWS Multi-Radar Multi-Sensor (MRMS) across the United States and its territories, the Iowa Environmental Mesonet (IEM) NEXRAD archive back to 2011-02-16, or RainViewer globally. Because radar images on their own are bare precipitation layers with no geography, the console draws them over an Esri basemap with state lines and coastlines, with highways and place names layered on top, and a red pin at the requested location.
 
 - Drag to pan.
-- **+** / **−** zoom between levels 3 and 7 (RainViewer's free tiles stop at 7).
+- **+** / **−** zoom between levels 3 and 11 (street/neighborhood level) for NWS and IEM WMS radar, or levels 3 and 7 for RainViewer (where free tiles stop at 7).
 - Double-click to re-center on the pin.
+- When multiple frames are returned (`animated: true` or `frames > 1`), all frames are consolidated into one map with a **▶ Play / ⏸ Pause** button, timeline slider, and UTC frame timestamp readout.
 
 ## Climate explorer
 
@@ -69,7 +72,7 @@ Open **Climate explorer** under **Explorers** at the top of the sidebar (or go t
 
 ### Loading a place
 
-Use the location helper (saved location, place search, or your location), or type a latitude and longitude and click **Load**. Picking a place loads it straight away.
+The controls share one row: the location bar (saved location, place search, or your location), the normals baseline, and **Load**. Picking a place loads it straight away, and fills in its coordinates to four decimal places (about 11 m). To type a latitude and longitude, click **Coordinates**, enter them, and click **Load**.
 
 The first load for a place takes a few seconds: it downloads every day since 1940 (about 31,000 days) in one request. After that, changing years, months, zoom, and units is instant, because nothing more is downloaded. The console remembers the last place you loaded.
 
@@ -83,7 +86,7 @@ The first load for a place takes a few seconds: it downloads every day since 194
 
 Changing the baseline reloads the place.
 
-The line under the title shows the place's coordinates, grid elevation, time zone, the dates covered, and the baseline in use.
+Under the title, one line gives the place's coordinates, grid elevation and time zone, and a second gives the dates covered and the baseline in use.
 
 ### Reading the chart
 
@@ -113,6 +116,8 @@ The normal range for each date pools the 15 days centered on it (±7 days) acros
 | **Last 12 months** | The 365 days up to the latest data |
 | Drag across the chart | Zoom to the dragged range (at least 3 days) |
 | Double-click the chart | Zoom back out to the whole year |
+
+The temperature axis stays put while you step between years: a whole-year view always spans the lowest to highest values recorded in any year, and a month view the range for that month across all years, so the same year or month always looks the same and years can be compared by eye. A dragged zoom or **Last 12 months** fits the axis to what is on screen.
 | **Records** / **Precipitation** | Show or hide record lines and markers, and the precipitation strip |
 | **°F** / **°C** | Switch temperature units (precipitation switches between inches and millimeters) |
 
@@ -168,10 +173,14 @@ Set these environment variables before `npm run web`:
 | Variable | Default | Purpose |
 |---|---|---|
 | `WEB_PORT` | `8787` | Port to listen on (1024–65535) |
-| `ENABLED_TOOLS` | `all` | Which tools the console's MCP server exposes; same presets and names as the MCP server (see [Tool Selection](../README.md#tool-selection-new-in-v140)) |
+| `WEB_HOST` | `127.0.0.1` | Address to listen on. `0.0.0.0` makes it reachable from other devices (e.g. in a Docker container); pair it with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` |
+| `WEB_ALLOWED_HOSTS` | *(none)* | Extra hostnames or IPs people and AI clients use to reach it, comma-separated, e.g. `raspberrypi.local,192.168.1.20`. `localhost`, `127.0.0.1` and `::1` are always allowed |
+| `WEATHER_MCP_TOKEN` | *(none)* | If set (16+ characters; `openssl rand -hex 32`), the console API and `/mcp` require it. The console asks for it once in a sign-in box and remembers it in that browser |
+| `WEATHER_MCP_DATA_DIR` | `~/.weather-mcp` | Data folder: saved locations (`locations.json`), `requests.log`, and saved climate records (`climate/`) |
+| `ENABLED_TOOLS` | `all` | Which tools are exposed; same presets and names as the MCP server (see [Tool Selection](../README.md#tool-selection-new-in-v140)) |
 | `LOG_LEVEL` | `1` | `0` for debug logging, which is useful when a tool misbehaves |
 
-The other MCP server settings (`CACHE_ENABLED`, `API_TIMEOUT_MS`, and so on) are passed through to the MCP server the console starts.
+The other MCP server settings (`CACHE_ENABLED`, `API_TIMEOUT_MS`, and so on) apply as usual; the MCP server runs in the same process.
 
 ```bash
 WEB_PORT=8797 npm run web
@@ -184,42 +193,52 @@ LOG_LEVEL=0 npm run web
 | Symptom | Fix |
 |---|---|
 | `EADDRINUSE` when starting | Another program (often another console) is using the port. Stop it, or start this one on another port with `WEB_PORT=8797 npm run web`. |
-| Status shows **Not connected** | The console couldn't start the MCP server. Check the terminal. `npm run web` builds first, but if you start `node dist/web/server.js` yourself, run `npm run build` first. |
+| Status shows **Not connected** | The page couldn't reach the server, or the server failed to start. Check the terminal. `npm run web` builds first, but if you start `node dist/web/server.js` yourself, run `npm run build` first. |
+| A **Sign in** box appears | The server was started with `WEATHER_MCP_TOKEN`. Enter that value; the browser remembers it. If the token changed, the box says the old one wasn't accepted. |
 | Page shows old behavior after pulling changes | Changes to `web/index.html` show up when you refresh. Changes to TypeScript need the console restarted (`npm run web` rebuilds). |
 | A tool is missing from the sidebar | It is disabled by `ENABLED_TOOLS`. |
-| `403 Forbidden host` / `Forbidden origin` | The console only answers `http://127.0.0.1:<port>` and `http://localhost:<port>`. Use one of those addresses. |
-| Climate explorer takes a long time or fails | The first load of a place downloads its whole record from Open-Meteo. Check your connection; Open-Meteo's free tier also limits daily requests. |
+| `403 Forbidden host` / `Forbidden origin` | The console only answers to `localhost`, `127.0.0.1` and names listed in `WEB_ALLOWED_HOSTS`. Add the hostname or IP you're using to `WEB_ALLOWED_HOSTS`. |
+| **Use my location** is missing, or Copy falls back | Browsers only allow location access on `https://` or `localhost` pages, so the button is hidden on plain `http://` from another device. Copy uses an older method there that works in most browsers. |
+| Climate explorer takes a long time or fails | The first load of a place downloads its whole record from Open-Meteo (about 6 seconds on a good connection). Check your connection, and see the next row if the message mentions a limit. |
+| **Rate limit exceeded** (Open-Meteo says "Minutely/Hourly/Daily API request limit exceeded") | Open-Meteo's free service limits each connection to 600 calls a minute, 5,000 an hour and 10,000 a day, and counts a request covering many days as several calls. The climate explorer's 86-year download is one of the heaviest: by Open-Meteo's published weighting (two weeks of data for 15 variables counts as 1.5 calls) one place costs roughly 680 calls, so the free allowance covers only about 7 new places an hour and about 14 a day, shared by everything using your internet connection. Each place is downloaded once and then saved in the data folder (`climate/`), so restarting or rebuilding the container does not cost another download, and reopening a place later only fetches its newest days. Wait for the time in the message (usually about a minute) and click **Load** again. If a place is already saved but Open-Meteo is refusing the small top-up, the chart still loads from the saved data and a line under the place name says it may be missing the latest days. Recently opened places (about 50) are also kept in memory, so they come back instantly. |
 
 ## How it works
 
-`src/web/server.ts` is a small Node `http` server. It starts the real MCP server (`dist/index.js`) as a child process and talks to it over MCP stdio through the MCP SDK client, exactly as an AI client would, so results match what an AI sees. If the MCP server exits, the console reconnects on the next request. The page, `web/index.html`, is a single file of plain HTML, CSS and JavaScript with no build step and no third-party scripts.
+`src/web/server.ts` starts a small Node `http` server (`src/web/app.ts`) that serves both AI clients and the console from one process, sharing one set of caches and saved locations. The console talks to the MCP server through an in-process MCP client, exactly as an AI client would, so results match what an AI sees. The page, `web/index.html`, is a single file of plain HTML, CSS and JavaScript with no build step and no third-party scripts.
 
-HTTP endpoints (for the page; the console is not meant as a public API):
+HTTP endpoints (the `/api/*` ones are for the page, not meant as a public API):
 
 | Endpoint | Purpose |
 |---|---|
+| `POST /mcp` | MCP endpoint for AI clients (Streamable HTTP, stateless). Requires the token when `WEATHER_MCP_TOKEN` is set |
+| `GET /health` | `{status, version, uptimeSeconds}`, for container health checks |
 | `GET /` | The console page |
 | `GET /api/tools` | The MCP server's tool list and input schemas |
 | `POST /api/call` | Run a tool. Body: `{"name": "get_forecast", "arguments": {...}}`, sent as `application/json`, up to 64 KB. Returns `{content, isError, elapsedMs}`. Calls time out after 180 s. |
-| `GET /api/saved-locations` | Saved locations, read directly from `~/.weather-mcp/locations.json` |
+| `GET /api/saved-locations` | Saved locations, read directly from `locations.json` in `WEATHER_MCP_DATA_DIR` (default `~/.weather-mcp`) |
 | `GET /api/geocode?q=` | Place search via Nominatim (up to 6 results) |
 | `GET /api/climate?latitude=&longitude=&baseline=` | The climate explorer's data, described below |
 
 `/api/climate` returns everything the explorer needs in one response (about 500 KB):
 
 - `high`, `low`, and `precipitation`: daily series since 1940 in °F and inches, starting at `start` and ending at `end`.
+- `refreshNote` (only sometimes present): set when a saved record could not be brought up to date, for example because Open-Meteo is rate limiting. The page shows it under the place name.
 - `climatology`, built by `src/utils/climatology.ts`, with one entry for each calendar day. Days are indexed 0–365 on a leap-year calendar, so February 29 has its own slot:
   - `high` / `low`: the mean, and quantiles from the 0th to the 100th percentile in 5% steps
   - `precipitationMean`
   - `recordHigh` / `recordLow`, each with its year
 - `baseline` defaults to `1991-2020`. Any `YYYY-YYYY` range of at least 10 years from 1940 to last year is accepted.
 
-The daily record comes from `OpenMeteoService.getDailyTemperatureRecord()` and is cached in memory, keyed by the coordinates (rounded to 0.01°) and end date.
+The daily record comes from `OpenMeteoService.getDailyTemperatureRecord()` and is cached in two layers, keyed by the coordinates (rounded to 0.01°):
+
+- **Memory:** a record is about 2 MB, so this cache has a fixed budget (96 MiB, about 50 places) and drops the least recently used places first; it never grows past that however many places you open.
+- **Disk:** each place is also saved as one compressed file (about 100-200 KB) in the `climate/` folder inside the data folder (`WEATHER_MCP_DATA_DIR`), so it survives restarts. The folder is limited to 128 MiB; the least recently opened places are deleted first. A saved record is brought up to date by fetching its last 100 days again (Open-Meteo revises the newest values for a while) plus any new days, which costs about 2 calls instead of about 680. A damaged file is ignored and downloaded again. The file names contain the place's coordinates, so keep the folder as private as `locations.json`; delete it any time to start fresh.
 
 ### Security
 
-- The console listens on `127.0.0.1` only.
-- It rejects requests whose `Host` header isn't its own address (which blocks DNS rebinding) and browser requests from any other origin (which blocks cross-site requests). A web page you visit can't use the console to change your saved locations.
+- By default the server listens on `127.0.0.1` only. Listening more widely (`WEB_HOST=0.0.0.0`) without `WEATHER_MCP_TOKEN` logs a warning.
+- It rejects requests whose `Host` header isn't one of its names (loopback plus `WEB_ALLOWED_HOSTS`), which blocks DNS rebinding, and browser requests from any other origin, which blocks cross-site requests. A web page you visit can't use the console to change your saved locations.
+- With `WEATHER_MCP_TOKEN` set, `/mcp` and `/api/*` require `Authorization: Bearer <token>` (compared in constant time). The page and `/health` stay open because they contain no data.
 - `POST` bodies must be JSON, and their size is capped.
 - The console only calls tools the MCP server lists, and every call goes through the server's normal input validation.
 - The page is served with a strict Content Security Policy: inline code only, no third-party scripts, and requests only to the console itself.

@@ -9,7 +9,7 @@ import { getLightningActivity } from '../../src/handlers/lightningHandler.js';
 
 describe('Weather Imagery (v1.5.0)', () => {
   describe('Precipitation Radar', () => {
-    it('should retrieve precipitation radar imagery for New York', async () => {
+    it('should retrieve precipitation radar imagery for New York (auto routes to NWS)', async () => {
       const result = await getWeatherImagery({
         latitude: 40.7128,
         longitude: -74.006,
@@ -21,8 +21,7 @@ describe('Weather Imagery (v1.5.0)', () => {
       expect(result.type).toBe('precipitation');
       expect(result.location.latitude).toBe(40.7128);
       expect(result.location.longitude).toBe(-74.006);
-      expect(result.source).toBe('RainViewer');
-      expect(result.coverage).toBe('Global');
+      expect(result.sourceId).toBe('nws');
       expect(result.animated).toBe(false);
       expect(Array.isArray(result.frames)).toBe(true);
 
@@ -30,7 +29,7 @@ describe('Weather Imagery (v1.5.0)', () => {
       if (result.frames.length > 0) {
         const frame = result.frames[0];
         expect(frame.url).toBeDefined();
-        expect(frame.url).toContain('tilecache.rainviewer.com');
+        expect(frame.url).toContain('opengeo.ncep.noaa.gov');
         expect(frame.timestamp).toBeInstanceOf(Date);
       }
 
@@ -99,15 +98,28 @@ describe('Weather Imagery (v1.5.0)', () => {
       ).rejects.toThrow();
     });
 
-    it('should reject satellite imagery (not yet implemented)', async () => {
+    it('should retrieve NOAA GOES satellite imagery for US locations and reject out-of-coverage', async () => {
+      const result = await getWeatherImagery({
+        latitude: 40.7128,
+        longitude: -74.006,
+        type: 'satellite',
+        animated: false
+      });
+
+      expect(result).toBeDefined();
+      expect(result.type).toBe('satellite');
+      expect(result.source).toContain('NOAA NESDIS STAR');
+      expect(result.frames.length).toBeGreaterThanOrEqual(1);
+      expect(result.frames[0].url).toContain('cdn.star.nesdis.noaa.gov/GOES19/ABI/SECTOR/ne/GEOCOLOR/');
+
       await expect(
         getWeatherImagery({
-          latitude: 40.7128,
-          longitude: -74.006,
+          latitude: 51.5074,
+          longitude: -0.1278,
           type: 'satellite',
           animated: false
         })
-      ).rejects.toThrow('not yet implemented');
+      ).rejects.toThrow('NOAA GOES-East (GOES-19) and GOES-West (GOES-18)');
     });
   });
 });

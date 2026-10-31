@@ -52,6 +52,22 @@ export class ApiError extends Error {
 }
 
 /**
+ * Where to read about each service's rate limits. Shown with the error, so each
+ * service must point at its own documentation (not another provider's).
+ */
+const RATE_LIMIT_HELP_LINKS: Record<ApiError['service'], string[]> = {
+  NOAA: ['https://www.weather.gov/documentation/services-web-api'],
+  OpenMeteo: [
+    'https://open-meteo.com/en/pricing',
+    'https://open-meteo.com/en/features#api-documentation'
+  ],
+  NCEI: ['https://www.ncdc.noaa.gov/cdo-web/webservices'],
+  RainViewer: ['https://www.rainviewer.com/api.html'],
+  Nominatim: ['https://operations.osmfoundation.org/policies/nominatim/'],
+  NOMADS: ['https://nomads.ncep.noaa.gov/']
+};
+
+/**
  * Rate limit error - too many requests
  */
 export class RateLimitError extends ApiError {
@@ -79,11 +95,7 @@ export class RateLimitError extends ApiError {
       429,
       service,
       userMessage,
-      [
-        'https://weather.gov/documentation/services-web-api',
-        'https://open-meteo.com/en/features#api-documentation',
-        'https://www.ncdc.noaa.gov/cdo-web/webservices'
-      ],
+      RATE_LIMIT_HELP_LINKS[service],
       true // Retryable after waiting
     );
 

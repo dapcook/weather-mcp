@@ -100,13 +100,13 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Safety assessment for maritime activities (sailing, boating, surfing)
   - Wave interpretation guide based on Douglas Sea Scale
   - Important: Data has limited coastal accuracy - NOT for navigation
-- **Weather Imagery**: Visual weather radar and precipitation maps (NEW in v1.5.0)
-  - Global precipitation radar from RainViewer API
-  - Static radar images showing current precipitation
-  - Animated radar loops (up to 2 hours of history)
-  - Tile URLs for efficient rendering
-  - Automatic coordinate-to-tile calculation
-  - Visual confirmation of approaching weather
+- **Weather Imagery**: Multi-provider US & global radar, historical archive, and NOAA GOES satellite (NEW in v1.5.0, expanded in v1.8)
+  - NOAA/NWS MRMS radar across CONUS, Alaska, Hawaii, Puerto Rico/Caribbean, and Guam (base reflectivity, composite reflectivity, 18 dBZ echo tops, precipitation type)
+  - Historical US NEXRAD radar archive back to `2011-02-16` via Iowa Environmental Mesonet (`at` timestamp parameter)
+  - Global precipitation radar fallback from RainViewer API
+  - NOAA NESDIS GOES-19 (East) & GOES-18 (West) satellite imagery (`type: "satellite"` — GeoColor, visible, infrared, water vapor, shortwave IR across US regional sectors, AK, HI, PR, Guam, and Full Disk)
+  - Radar-estimated point precipitation accumulations (1, 3, 6, 12, 24, 48, 72h in inches and mm via `include_values` / NWS MRMS QPE)
+  - Direct AI visual inspection via `include_image: true` (returns an MCP `image` content block with a self-contained composited basemap + radar + pin PNG or GOES satellite JPEG)
   - Free, no API key required
 - **Lightning Activity**: Real-time lightning strike detection and safety monitoring (NEW in v1.5.0)
   - Real-time strike detection from Blitzortung.org network
@@ -135,16 +135,16 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Data from NIFC WFIGS (National Interagency Fire Center)
 - **NOMADS Model-Run Forecasts & Model Comparison** (NEW - Unreleased)
   - `get_forecast_nomads`: Raw forecast straight from the latest NOMADS/NCEP GFS model run
-  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), and ECMWF proxy (Open-Meteo) side by side for the same location/dates
+  - `get_model_comparison_forecast`: Compare GFS, NAM, HRRR (NOMADS), ECMWF IFS and AIFS, ICON, and GEM (Open-Meteo) side by side for the same location/dates
   - Per-model deterministic horizon handling (e.g. NAM ~84h, HRRR ~48h) with values marked N/A beyond each model's horizon
   - HRRR (3km resolution) is opt-in and CONUS-only; requests outside the continental US are rejected with a clear error
 - **Service Status Checking**: Proactively verify API availability with health checks
 - **Enhanced Error Handling**: Detailed, actionable error messages with status page links
-- **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance
+- **Intelligent Caching**: Built-in in-memory cache reduces API calls and improves performance; the climate explorer's heavy 86-year downloads are also saved on disk so restarts don't repeat them
 
 ## Caching
 
-The Weather MCP server includes an intelligent in-memory caching system that significantly improves performance for AI-driven weather queries.
+The Weather MCP server includes an intelligent in-memory caching system that significantly improves performance for AI-driven weather queries. One kind of data is also saved on disk: the climate explorer's full daily record for each place (see below).
 
 ### Benefits
 
@@ -172,6 +172,7 @@ The cache automatically stores and retrieves weather data with intelligent expir
 - **Historical Data (>1 day old)**: Cached indefinitely (finalized data never changes)
 - **Recent Historical (<1 day)**: Cached for 1 hour (may still be updated)
 - **Grid Coordinates**: Cached indefinitely (geographic mappings are static)
+- **Climate Explorer Daily Records**: Kept in a memory-limited cache (96 MiB, about 50 places, least recently used dropped first) **and saved on disk**, one compressed file per place, in `climate/` inside the data folder (`~/.weather-mcp` by default, or `WEATHER_MCP_DATA_DIR`). Open-Meteo counts one 86-year record as about 680 calls, so without the disk copy every restart would spend that allowance again. A saved record is refreshed by fetching only its last 100 days plus new days; if that fails, the saved data is shown with a note. Delete the folder any time to start fresh; see [Climate explorer records](./docs/DOCKER.md#climate-explorer-records)
 
 ### Configuration
 
@@ -277,7 +278,7 @@ Use the `check_service_status` tool to view cache statistics including:
 - Cache size and utilization
 - API call reduction metrics
 
-For detailed information about caching architecture and configuration, see [.github/CACHING.md](./.github/CACHING.md).
+For detailed information about caching architecture and configuration, see [Caching Strategy](./.github/CACHING.md).
 
 ## Installation
 
@@ -406,7 +407,7 @@ This MCP server works with any client that supports the Model Context Protocol, 
 - **LM Studio** - Local AI model interface
 - **Postman** - API platform with MCP integration
 
-For detailed setup instructions for each client, see **[CLIENT_SETUP.md](./docs/CLIENT_SETUP.md)**.
+For detailed setup instructions for each client, see **[CLIENT_SETUP.md](./docs/CLIENT_SETUP.md)**. To use a server running on another machine (for example in [Docker on a Raspberry Pi](./docs/DOCKER.md)), see [Connecting to a remote server](./docs/CLIENT_SETUP.md#connecting-to-a-remote-server-http).
 
 ### Quick Start: Claude Code
 
@@ -477,13 +478,32 @@ npm run web
 
 Then open http://127.0.0.1:8787.
 
-- **Uses the real MCP server.** The console starts `dist/index.js` as a child process and talks to it over MCP stdio, exactly like an AI client does, so results match what an LLM would see.
+- **Uses the real MCP server.** The console talks to the MCP server through an in-process MCP client, exactly like an AI client does, so results match what an LLM would see.
+- **Also an MCP endpoint for AI clients.** The same server answers MCP over HTTP at `/mcp`, so AI clients on other machines can use the tools (e.g. `claude mcp add --transport http weather http://<host>:8787/mcp`). See [Running in Docker](./docs/DOCKER.md) for running it on another machine such as a Raspberry Pi.
 - **Forms come from the tool schemas**, so new tools and parameters appear automatically.
 - **Location helpers:** pick a saved location, search for a place by name, or use your browser's location.
 - **Radar on a real map:** radar results are drawn over a basemap with state lines, highways, and city names, with a pin at your location. Drag to pan and use +/− to zoom (levels 3–7, RainViewer's free limit).
-- **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station.
+- **Climate explorer** (sidebar → Explorers, or `/#climate`): a WeatherSpark-style chart of daily highs and lows for any year since 1940, drawn over the normal range for each calendar day (25th–75th and 10th–90th percentile bands, pooled ±7 days around each date, from a 1991–2020 baseline by default). Hover a day to see how unusual it was ("94th percentile"), drag to zoom, step through months or years with ‹ ›, and optionally show the record high and low for each date and a precipitation strip. A summary shows departures from normal, unusually hot days and cold nights, records set, and precipitation against normal for whatever range is on screen. The data is Open-Meteo's ERA5 reanalysis (a ~25 km grid average), so it can read a few degrees off a nearby airport station. Each place is downloaded once and saved in the data folder, so later visits (and restarts) are instant.
 - **All tools are enabled by default** (`ENABLED_TOOLS=all`); set `ENABLED_TOOLS` to limit them. Set `WEB_PORT` to change the port (default 8787).
-- **Local only:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations.
+- **Local only by default:** it listens on 127.0.0.1 and rejects requests from other websites, so a page you visit can't use it to change your saved locations. To reach it from other devices, set `WEB_HOST=0.0.0.0`, list the names you'll use in `WEB_ALLOWED_HOSTS`, and set `WEATHER_MCP_TOKEN` to require a token (the console shows a sign-in box). Details in the [guide](./docs/WEB_CONSOLE.md#configuration).
+
+## Running in Docker (or on a Raspberry Pi)
+
+Run the server once in a container, on your own computer or on an always-on machine such as a Raspberry Pi, and use it from every AI client (and, on a shared machine, every device on your network): AI clients connect to its `/mcp` endpoint, and you open the [web console](#web-console-use-the-tools-without-an-llm) in a browser. One container serves both, and saved locations are kept in a folder on the host.
+
+```bash
+git clone https://github.com/dapcook/weather-mcp.git && cd weather-mcp
+cp .env.example .env      # set WEATHER_MCP_TOKEN (openssl rand -hex 32) and WEB_ALLOWED_HOSTS
+mkdir -p data
+docker compose up -d --build
+```
+
+Then open `http://<host>:3003` and point your AI client at `http://<host>:3003/mcp`.
+
+- The image builds for `linux/amd64` and `linux/arm64`; it is tested on Apple Silicon and a Raspberry Pi 5 (64-bit OS).
+- Only on your own computer? Set `WEATHER_MCP_BIND=127.0.0.1` in `.env` so other devices can't connect (see [On your own computer only](./docs/DOCKER.md#on-your-own-computer-only)).
+- The container is locked down (non-root, read-only filesystem, no extra capabilities) and requires a token for `/mcp` and the console's API. It's meant for a home network, not the internet.
+- Setup, settings, updating, backups, security, and troubleshooting are in **[docs/DOCKER.md](./docs/DOCKER.md)**; copy-paste client configs for Claude Desktop, Claude Code, Cursor, and VS Code are in [Connecting to a remote server](./docs/CLIENT_SETUP.md#connecting-to-a-remote-server-http).
 
 ## Available Tools
 
@@ -498,16 +518,21 @@ Get weather forecast for any location worldwide.
 - `granularity` (optional): "daily" or "hourly" (default: "daily")
 - `include_precipitation_probability` (optional): Include rain chances (default: true)
 - `include_normals` (optional): Include climate normals for comparison (default: false, NEW in v1.2.0)
-- `source` (optional): "auto" (default), "noaa" (US only), or "openmeteo" (global)
+- `source` (optional): "auto" (default), "noaa" (US only), "openmeteo" (global), or "nomads" (NOAA GFS model run)
+- `model` (optional): get the forecast from one specific weather model instead: `"ecmwf"` (ECMWF IFS, 15 days), `"ecmwf_aifs"` (ECMWF's AI model, 15 days), `"icon"` (Germany, ~7.5 days), `"gem"` (Canada, 10 days), `"gfs"` (NOAA, 16 days), `"nam"` (NOAA, continental US, ~3 days) or `"hrrr"` (NOAA 3 km, continental US, ~2 days). Works with daily and hourly forecasts
 
 **Description:**
 Automatically selects the best data source: NOAA for US locations (more detailed) or Open-Meteo for international locations. Supports extended forecasts up to 16 days. Includes sunrise/sunset times, daylight duration, temperature, precipitation, wind, and UV index.
+
+With `model`, the forecast is that one model's own output, served by Open-Meteo (not blended with other models), anywhere in the world including the US. The header names the model and the run it came from (when Open-Meteo reports it). Days past the model's reach are left out with a note, as are fields a model doesn't provide (most single models have no UV index; AIFS has no gusts or precipitation chance). NAM and HRRR cover the continental US only. `model` can't be combined with `source: "noaa"` or `"nomads"`. To see several models side by side, use [get_model_comparison_forecast](#18-get_model_comparison_forecast-new---unreleased).
 
 **Examples:**
 ```
 "Get a 7-day forecast for Paris (48.8534, 2.3488)"
 "Hourly forecast for Tokyo for the next 3 days"
 "16-day extended forecast for Sydney, Australia"
+"What does the ECMWF model say for Kansas City this week?"
+"Hourly HRRR forecast for Dallas for tomorrow"
 ```
 
 **Returns:**
@@ -742,36 +767,38 @@ Provides comprehensive marine weather data with intelligent dual-source support:
 - Wave period for planning and safety
 - Optional 5-day forecast with daily summaries
 
-### 9. get_weather_imagery (NEW in v1.5.0)
-Get weather radar and precipitation imagery for visual weather analysis.
+### 9. get_weather_imagery (NEW in v1.5.0, Enhanced with NWS, IEM Archive & QPE)
+Get weather radar, historical radar archives, and radar-estimated precipitation amounts for visual weather analysis.
 
 **Parameters:**
 - `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
 - `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
 - `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `type` (required): Imagery type - "precipitation", "radar", or "satellite" (Note: satellite not yet implemented)
+- `source` (optional): Radar provider - `"auto"` (default: NWS for US & territories, IEM for US historical, RainViewer globally), `"nws"`, `"iem"`, or `"rainviewer"`
+- `product` (optional): Radar product - `"base_reflectivity"` (default), `"composite_reflectivity"`, `"echo_tops"`, or `"precip_type"` (NWS supports all four; IEM and RainViewer provide base reflectivity)
 - `animated` (optional): Return animated loop vs static image (default: false)
-- `layers` (optional): Additional map layers (reserved for future use)
+- `frames` (optional): Number of frames to return (1-24; default: 1, or 6 when animated)
+- `past_minutes` (optional): Animation window in minutes (5-180, default: 60)
+- `at` (optional): ISO-8601 UTC timestamp for historical radar (e.g., `"2025-06-12T22:00:00Z"`), supported back to `2011-02-16` for US locations via IEM
+- `include_values` (optional): Include radar-estimated precipitation totals (1, 3, 6, 12, 24, 48, and 72 hours in inches and mm) from NWS MRMS QPE (default: false, US only)
 
 **Description:**
-Provides access to weather radar and precipitation imagery from RainViewer API with global coverage. Returns tile URLs for efficient rendering of current precipitation or animated radar loops showing up to 2 hours of history. Perfect for visual confirmation of approaching weather systems.
+Provides weather radar imagery with automatic source selection: NOAA/NWS Multi-Radar Multi-Sensor (MRMS) across the United States and its territories (CONUS, Alaska, Hawaii, Puerto Rico/USVI, Guam) at 2-minute intervals, the Iowa Environmental Mesonet (IEM) NEXRAD composite archive back to February 2011 at 5-minute intervals, and RainViewer for global coverage. In the web console, WMS sources zoom down to street level (level 11) and multi-frame results play in an interactive timeline slider.
 
 **Examples:**
 ```
-"Show me the current radar for New York"
-"Get animated precipitation radar for London for the last 2 hours"
-"Is there any precipitation showing on radar near me?"
+"Show me the current radar for Kansas City"
+"Show composite reflectivity radar and rain totals for Seattle"
+"What did the radar look like in Kansas City on 2025-06-12 at 22:00 UTC?"
+"Get animated precipitation radar for London"
 ```
 
 **Returns:**
-- Precipitation radar imagery (static or animated)
-- Tile URLs for efficient rendering
-- Frame timestamps for animated sequences
-- Coverage area and resolution information
-- Automatic coordinate-to-tile calculation
-- Up to 2 hours of historical radar frames when animated
-
-**Note:** Satellite imagery is planned for a future release. Precipitation radar provides global coverage via the free RainViewer API.
+- Radar imagery URLs (WMS `GetMap` in `EPSG:3857` for NWS/IEM, or XYZ tiles for RainViewer)
+- Frame timestamps for static snapshots, animated loops, or historical sequences
+- Provider, product description, coverage region, and attribution (plus a fallback note if an upstream service was unreachable)
+- Optional 1–72 hour radar-estimated precipitation totals (inches and mm) when `include_values: true`
 
 ### 10. get_lightning_activity (NEW in v1.5.0)
 Get real-time lightning strike detection and safety assessment for outdoor activity planning.
@@ -1017,30 +1044,41 @@ Fetches and formats a forecast directly from the current NCEP GFS model run via 
 - Average humidity
 
 ### 18. get_model_comparison_forecast (NEW - Unreleased)
-Compare forecasts across multiple model sources (GFS, NAM, HRRR, ECMWF proxy) side by side.
+Compare forecasts from several weather models side by side, day by day: the US models (GFS, NAM, HRRR), the European Centre's ECMWF IFS and its AI model AIFS, Germany's ICON, and Canada's GEM.
 
 **Parameters:**
 - `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
 - `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
 - `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `days` (optional): Number of forecast days to compare (1-10, default: 7)
-- `models` (optional): Array of models to include — `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf_proxy"` (or `"ecmwf"`, which maps to `"ecmwf_proxy"`). Defaults to `["gfs", "nam", "ecmwf_proxy"]`. `"hrrr"` is opt-in only since it's CONUS-only.
+- `models` (optional): Array of models to include: `"gfs"`, `"nam"`, `"hrrr"`, `"ecmwf"`, `"ecmwf_aifs"`, `"icon"`, `"gem"`. Defaults to `["gfs", "nam", "ecmwf", "icon", "gem"]`; `"hrrr"` (continental US only) and `"ecmwf_aifs"` are opt-in. The old name `"ecmwf_proxy"` still works and now means `"ecmwf"`.
+
+**Models:**
+
+| Model | From | Source here | Coverage | Reaches |
+|---|---|---|---|---|
+| GFS | NOAA (US) | NOMADS model run, 1.0° grid | Global | 10 days |
+| NAM | NOAA (US) | NOMADS model run | North America | ~84 hours |
+| HRRR | NOAA (US) | NOMADS model run, 3 km | Continental US | 48 hours |
+| ECMWF IFS | European Centre (ECMWF) | Open-Meteo | Global | 15 days |
+| ECMWF AIFS | European Centre (AI model) | Open-Meteo | Global | 15 days |
+| ICON | Germany (DWD) | Open-Meteo, global run | Global | ~7.5 days |
+| GEM | Canada (ECCC) | Open-Meteo, global run | Global | 10 days |
 
 **Description:**
-Pulls GFS and NAM model-run data from NOMADS and blends in ECMWF proxy guidance via Open-Meteo for longer-range context, so you can see how models agree or diverge for the same location and dates. HRRR (3km, CONUS-only) can be added explicitly for high-resolution short-range guidance. Each model has a different deterministic horizon:
-- **NAM:** ~84 hours — later days are shown as N/A
-- **HRRR:** ~48 hours — later days are shown as N/A; requests outside the continental US will fail for this model
-- **GFS / ECMWF proxy:** cover the full requested range
+Shows how models agree or diverge for the same place and dates; when they agree, the forecast is more certain. GFS, NAM and HRRR are decoded from NOAA's NOMADS files. ECMWF, AIFS, ICON and GEM are each model's own forecast, served by Open-Meteo (one small request per model; before this, the "ECMWF proxy" row was Open-Meteo's automatic blend, not ECMWF). Days beyond a model's reach are shown as N/A with the reason. Each row shows the model run it came from when the source reports it; GEM's run time is shown as "not reported" because Open-Meteo's metadata for it was stale when checked. A single model run has no precipitation chance: Open-Meteo supplies one where it can, and AIFS has none.
 
 **Examples:**
 ```
-"Compare GFS and NAM forecasts for Denver this week"
+"Compare the models for Denver this week"
+"Do ECMWF and GFS agree on rain in Kansas City on Thursday?"
 "Show me GFS, NAM, and HRRR side by side for Dallas"
 ```
 
 **Returns:**
-- Per-model daily high/low temperature, precipitation, and wind (where available within each model's horizon)
-- Model run time and horizon notes (e.g., NAM/HRRR cutoff, HRRR CONUS-only restriction, ECMWF proxy caveat)
+- One table per day with a row per model (high, low, precipitation chance and total, peak wind, humidity) and a **Range** row showing how far apart the models are; a narrow range means a more certain forecast
+- Each model's run time and horizon, plus notes on models that stop early or failed
+- For GFS, NAM and HRRR, the precipitation "chance" is marked † and explained: it's the share of the run's forecast steps with precipitation, not a probability
 
 ## Using Saved Locations with Weather Tools
 
@@ -1155,14 +1193,14 @@ npm run test:ui
 ```
 
 **Test Coverage:**
-- **1,042 tests** across unit and integration test suites (111 new tests in v1.6.0)
-- **100% coverage** on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
-- **100% pass rate** with comprehensive security and boundary validation
-- All tests execute in ~2 seconds
+- **1,326 tests** across unit (1,264 tests in 47 files) and integration (62 tests in 4 files) suites
+- **Coverage target:** 100% on critical utilities (cache, validation, units, errors, normals, snow, timezone, distance, geohash, security)
+- **Unit tests** need no network and run in about a second. **Integration tests** call the live weather APIs, so they take longer and can fail when an upstream service is down
+- **Run tests with these unset in your shell:** `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE`, `LOG_LEVEL`. The tests for default values read them, so a value you have set for another purpose makes them fail
 
 **Test Categories:**
-- **Unit Tests** (965 tests) - Cache, validation, units, errors, config, retry logic, normals, snow, timezone, distance, security, geohash
-- **Integration Tests** (77 tests) - Error recovery, service status checks, safety & hazards features
+- **Unit Tests** (1,264 tests) - Cache, validation, units, errors, config and tool presets, retry logic, normals, snow, precipitation type, timezone, distance, security, geohash, GRIB grids, climatology, location resolver, saved locations, NOMADS loading, web server settings and access checks, and the HTTP `/mcp` + console server
+- **Integration Tests** (62 tests) - Error recovery, Great Lakes marine, weather imagery and lightning, safety & hazards (river and wildfire)
 
 ### Quick API Connectivity Test
 
@@ -1187,7 +1225,9 @@ See [TESTING_GUIDE.md](./docs/testing/TESTING_GUIDE.md) for comprehensive manual
 **Build & Run:**
 - `npm run build` - Compile TypeScript to JavaScript
 - `npm run dev` - Run the server in development mode with tsx
-- `npm start` - Run the compiled server
+- `npm start` - Run the compiled server (stdio, for AI clients that launch it)
+- `npm run web` - Build, then run the web server: the `/mcp` endpoint for AI clients plus the [web console](#web-console-use-the-tools-without-an-llm)
+- `docker compose up -d --build` - Run that same web server in a container (see the [Docker guide](./docs/DOCKER.md))
 
 **Testing:**
 - `npm test` - Run all automated tests
@@ -1205,49 +1245,42 @@ See [TESTING_GUIDE.md](./docs/testing/TESTING_GUIDE.md) for comprehensive manual
 ```
 weather-mcp/
 ├── src/
-│   ├── index.ts                 # Main MCP server
-│   ├── config/
-│   │   ├── api.ts               # API configuration (NCEI token) - NEW in v1.2.0
-│   │   ├── cache.ts             # Cache configuration and TTL strategies
-│   │   └── displayThresholds.ts # Display thresholds for weather conditions
-│   ├── errors/
-│   │   └── ApiError.ts          # Custom error class hierarchy
-│   ├── handlers/
-│   │   ├── alertsHandler.ts     # Weather alerts tool handler
-│   │   ├── currentConditionsHandler.ts  # Current conditions handler
-│   │   ├── forecastHandler.ts   # Forecast tool handler
-│   │   ├── historicalWeatherHandler.ts  # Historical weather handler
-│   │   ├── airQualityHandler.ts # Air quality handler
-│   │   ├── marineConditionsHandler.ts   # Marine conditions handler
-│   │   ├── locationHandler.ts   # Location search handler
-│   │   └── statusHandler.ts     # Service status handler
-│   ├── services/
-│   │   ├── noaa.ts              # NOAA API service
-│   │   ├── openmeteo.ts         # Open-Meteo API service
-│   │   └── ncei.ts              # NCEI climate normals service - NEW in v1.2.0
-│   ├── types/
-│   │   ├── noaa.ts              # NOAA TypeScript type definitions
-│   │   └── openmeteo.ts         # Open-Meteo TypeScript type definitions
-│   └── utils/
-│       ├── cache.ts             # LRU cache implementation
-│       ├── logger.ts            # Structured logging utilities
-│       ├── temperatureConversion.ts  # Temperature conversion helpers
-│       ├── units.ts             # Unit conversion utilities
-│       ├── validation.ts        # Input validation functions
-│       ├── normals.ts           # Climate normals utilities - NEW in v1.2.0
-│       ├── snow.ts              # Snow and ice data utilities - NEW in v1.2.0
-│       └── timezone.ts          # Timezone-aware formatting - NEW in v1.2.0
+│   ├── index.ts                 # stdio entry point (node dist/index.js)
+│   ├── mcpServer.ts             # Tool registry and handlers (createServices, createMcpServer)
+│   ├── web/                     # HTTP server for /mcp and the web console (npm run web)
+│   │   ├── server.ts            #   entry point
+│   │   ├── app.ts               #   routes: /mcp, /, /api/*, /health
+│   │   ├── config.ts            #   WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN
+│   │   └── access.ts            #   Host, Origin and bearer-token checks
+│   ├── handlers/                # One handler per MCP tool (forecast, NOMADS forecast, model
+│   │                            #   comparison, current conditions, alerts, historical, air quality,
+│   │                            #   marine, imagery, lightning, river, wildfire, locations, status)
+│   ├── services/                # API clients and stores: noaa, openmeteo, nomads, modelComparison,
+│   │                            #   nominatim, geocoding, ncei, nifc, rainviewer, blitzortung,
+│   │                            #   locationStore, dailyRecordStore (climate records on disk)
+│   │                            #   (USGS Water Services is called from noaa.ts)
+│   ├── types/                   # TypeScript type definitions
+│   ├── utils/                   # cache, byteBudgetCache, validation, units, timezone, normals, snow,
+│   │                            #   precipType, climatology, locationResolver, gribGrid, logger, and more
+│   ├── config/                  # cache, tools (presets and aliases), api, displayThresholds
+│   ├── analytics/               # Optional, off by default
+│   └── errors/                  # Custom error class hierarchy
+├── web/
+│   └── index.html               # Web console page (tools, radar map, climate explorer; no build step)
 ├── tests/
-│   ├── unit/                    # Unit tests (427 tests) - 93 new tests in v1.2.0
-│   └── integration/             # Integration tests (19 tests)
+│   ├── unit/                    # 1,264 tests, no network
+│   └── integration/             # 62 tests, live APIs
+├── docs/                        # Documentation (start at docs/README.md)
+├── Dockerfile, docker-compose.yml, .env.example
 ├── dist/                        # Compiled JavaScript (generated)
-├── docs/                        # Documentation
 └── package.json
 ```
 
+The full annotated tree is in [CLAUDE.md](./CLAUDE.md); the runtime flow is in [Application Flow](./docs/APPLICATION_FLOW.md).
+
 ## API Information
 
-This server uses three weather APIs:
+This server uses public weather APIs that need no API key (an optional NCEI token adds official US climate normals). The three main ones are below; the rest are listed under [Additional Data Sources](#additional-data-sources).
 
 ### NOAA Weather API (Real-time, US)
 - **Base URL**: https://api.weather.gov
@@ -1283,6 +1316,20 @@ This server uses three weather APIs:
 - **Data**: Hourly or daily temperature, precipitation, wind, humidity, pressure, cloud cover
 - **Resolution**: 9-25km grid resolution from reanalysis models
 - **Delay**: 5-day delay for most recent data
+
+### Additional Data Sources
+
+| Source | Used for | Notes |
+|---|---|---|
+| **NOAA NOMADS** (`nomads.ncep.noaa.gov`) | `get_forecast_nomads`, `get_model_comparison_forecast`: GFS, NAM and HRRR model runs | GRIB files, decoded locally; HRRR is CONUS only |
+| **Open-Meteo** air quality, marine and archive endpoints | `get_air_quality`, `get_marine_conditions`, historical data, climate explorer | Same free non-commercial terms as the forecast API |
+| **US Census geocoder**, **Nominatim** (OpenStreetMap), **Open-Meteo geocoding** | `search_location`: tried in that order with automatic fallback | `save_location` and the web console's place search use Nominatim only, which is limited to 1 request per second |
+| **NOAA NWPS** (`api.water.noaa.gov`) and **USGS Water Services** | `get_river_conditions` | US only |
+| **NIFC WFIGS** (ArcGIS REST) | `get_wildfire_info` | US only |
+| **RainViewer** | `get_weather_imagery`, radar map in the web console | Precipitation radar tiles; free tiles go to zoom level 7 |
+| **Blitzortung.org** community MQTT broker | `get_lightning_activity` | Plain (unencrypted) MQTT; see `.env.example` for how to use a TLS broker |
+| **NOAA NCEI** (optional token) | Official US climate normals | Falls back to Open-Meteo computed normals |
+| **Esri ArcGIS Online** map tiles | Basemap under the radar in the web console only | Loaded by your browser, not the server |
 
 For more details on NOAA APIs, see [NOAA_API_RESEARCH.md](./docs/NOAA_API_RESEARCH.md).
 
@@ -1324,7 +1371,7 @@ For more details on NOAA APIs, see [NOAA_API_RESEARCH.md](./docs/NOAA_API_RESEAR
 
 ### Rate Limits
 - **NOAA Weather API**: Automatic retry with exponential backoff on rate limit errors
-- **Open-Meteo API**: 10,000 requests/day for non-commercial use
+- **Open-Meteo API**: free for non-commercial use, limited to 600 calls a minute, 5,000 an hour and 10,000 a day. A request covering many days counts as several calls (two weeks of 15 variables is 1.5), so the climate explorer's 86-year download costs about 680: roughly 7 new places an hour, 14 a day. Saved records (above) mean each place is downloaded once. When a limit is hit the error says which one
 
 ### Recommendations
 - **For recent US weather**: Use dates within the last 7 days for detailed station observations
@@ -1352,22 +1399,24 @@ This project takes security seriously and implements multiple layers of protecti
 **Dependency Security:**
 - Automated dependency scanning via `npm audit`
 - GitHub Dependabot configured for weekly security updates
-- Minimal dependency footprint (3 runtime dependencies)
-- Zero known vulnerabilities in current dependencies
+- Small dependency footprint (7 runtime dependencies)
+- Run `npm audit` regularly; Dependabot opens weekly update pull requests
 
 **Reliability:**
 - Exponential backoff with jitter prevents thundering herd problems
-- Comprehensive test suite (247 tests) with 100% coverage on critical utilities
+- Comprehensive test suite (1,326 tests) with a 100% coverage target on critical utilities
 - Memory-safe cache with automatic cleanup
 - Graceful shutdown handling
 
+**Network exposure (web server and Docker):**
+- The HTTP `/mcp` endpoint and web console exist only if you run `npm run web` or the Docker container; the default stdio server opens no network port
+- They listen on `127.0.0.1` by default, reject unknown `Host` names (DNS rebinding) and other websites' `Origin` (cross-site requests), and support a bearer token (`WEATHER_MCP_TOKEN`) for `/mcp` and the console API
+- The container runs as a non-root user with a read-only filesystem and no extra Linux capabilities. It is meant for a trusted home network, not the internet; see [Security in the Docker guide](./docs/DOCKER.md#security)
+
 ### Security Audit
 
-The project has undergone a comprehensive security audit:
-- **Overall Security Posture:** B+ (Good)
-- **Risk Level:** LOW
-- **Vulnerabilities:** Zero critical or high-severity issues
-- See [SECURITY_AUDIT.md](./docs/development/SECURITY_AUDIT.md) for full audit report
+The project has undergone security audits; the most recent is for v1.6.0 (2025-11-10). It predates the saved locations, web console, HTTP endpoint, and Docker additions.
+- See [SECURITY_AUDIT_V1.6.md](./docs/development/SECURITY_AUDIT_V1.6.md) for the audit report and [SECURITY.md](./SECURITY.md) for the audit history
 
 ### Reporting Security Issues
 
@@ -1378,41 +1427,51 @@ To report a security vulnerability, please see our [Security Policy](./SECURITY.
 
 ## Documentation
 
-📚 **[Complete Documentation Index](./docs/README.md)** - Comprehensive navigation guide to all project documentation
+📚 **[Complete Documentation Index](./docs/README.md)** - Navigation guide to every document below, with a note on which are current and which are dated snapshots.
 
-### Quick Links
+**Current status and open work:** [To Do list](./docs/TODO.md) · [Changelog](./CHANGELOG.md) · [Project Status](./docs/PROJECT_STATUS.md)
 
-**For Users:**
+### Using the server
+
 - [Web Console Guide](./docs/WEB_CONSOLE.md) - Run tools and explore climate history in a browser, no AI client needed
-- [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup instructions for 8 different MCP clients
-- [Testing Guide](./docs/testing/TESTING_GUIDE.md) - Manual testing procedures
-- [Error Handling](./docs/ERROR_HANDLING.md) - Enhanced error handling features
+- [Running in Docker](./docs/DOCKER.md) - Run the server in a container (your own computer or a Raspberry Pi) for all your devices
+- [Client Setup Guide](./docs/CLIENT_SETUP.md) - Setup for 8 MCP clients, including connecting to a remote server
+- [Caching Strategy](./.github/CACHING.md) - In-memory cache, TTLs, and the climate records saved on disk
+- [Error Handling](./docs/ERROR_HANDLING.md) - How errors are reported
+- [Service Status Best Practices](./docs/MCP_BEST_PRACTICES.md) - MCP guidelines used here
+- [Local Analytics Guide](./docs/analytics/LOCAL_ANALYTICS_GUIDE.md) - Optional, off by default
 
-**For Developers:**
+### Developing
+
 - [Contributing Guidelines](./CONTRIBUTING.md) - How to contribute
-- [Development Guide](./CLAUDE.md) - AI assistant development guide
-- [Code Review](./docs/development/CODE_REVIEW.md) - Code quality analysis
-- [Security Audit](./docs/development/SECURITY_AUDIT_V1.6.md) - Security assessment
+- [Development Guide for AI assistants](./CLAUDE.md) (mirrored in [AGENTS.md](./AGENTS.md)) - Architecture, conventions, and tests
+- [Application Flow](./docs/APPLICATION_FLOW.md) - Startup, request handling, caching and shutdown
+- [Testing Guide](./docs/testing/TESTING_GUIDE.md) and [Test Suite Overview](./docs/testing/TEST_SUITE_README.md) - Manual and automated testing
+- [NOAA API Research](./docs/NOAA_API_RESEARCH.md) and [Historical Data Plan](./docs/HISTORICAL_DATA_PLAN.md) - Data source notes
+- [Documentation Maintenance](./docs/development/DOCUMENTATION_MAINTENANCE.md) - Keeping these docs in sync
+- [Publishing](./docs/publishing/PUBLISHING.md) and [MCP Registry Submission](./docs/publishing/REGISTRY_SUBMISSION.md) - Releasing
 
-**Planning & Roadmap:**
-- [Implementation Plan](./docs/planning/IMPLEMENTATION_PLAN.md) - Project roadmap
-- [Future Enhancements](./docs/planning/FUTURE_ENHANCEMENTS.md) - Planned features
-- [Roadmap](./docs/planning/ROADMAP.md) - Long-term plans
+### Security
 
-**Testing & Quality:**
-- [Test Suite](./docs/testing/TEST_SUITE_README.md) - Test overview
-- [Test Coverage](./docs/testing/TEST_COVERAGE_ANALYSIS_2025.md) - Latest coverage analysis
-- [Test Recommendations](./docs/testing/TEST_RECOMMENDATIONS.md) - Improvement suggestions
+- [Security Policy](./SECURITY.md) - Reporting, privacy, and best practices
+- [Security Audit v1.6](./docs/development/SECURITY_AUDIT_V1.6.md) (latest; predates the web console and Docker) and the [earlier audit](./docs/development/SECURITY_AUDIT.md)
+- [Analytics Security Guide](./docs/analytics/MCP_ANALYTICS_SECURITY_GUIDE.md)
 
-**Analytics (Optional):**
-- [Analytics Plan](./docs/analytics/ANALYTICS_MCP_PLAN.md) - Privacy-first analytics
-- [Analytics Security](./docs/analytics/MCP_ANALYTICS_SECURITY_GUIDE.md) - Security implementation guide
-- [Local Analytics](./docs/analytics/LOCAL_ANALYTICS_GUIDE.md) - Setup guide
+### Planning
 
-**Technical Documentation:**
-- [NOAA API Research](./docs/NOAA_API_RESEARCH.md) - NOAA API integration details
-- [Historical Data Plan](./docs/HISTORICAL_DATA_PLAN.md) - Historical weather implementation
-- [MCP Best Practices](./docs/MCP_BEST_PRACTICES.md) - MCP protocol guidelines
+- [To Do list](./docs/TODO.md) - Open work, in priority order
+- [Roadmap](./docs/planning/ROADMAP.md), [Future Enhancements](./docs/planning/FUTURE_ENHANCEMENTS.md), and [Implementation Plan](./docs/planning/IMPLEMENTATION_PLAN.md)
+- [Docker Deployment Plan](./docs/planning/DOCKER_DEPLOYMENT_PLAN.md) - Design, decisions and test results for the container
+- [Radar Sources Plan](./docs/planning/RADAR_SOURCES_PLAN.md) - Adding NWS, IEM, Environment Canada and DWD radar to `get_weather_imagery`
+- [Climate Normals Plan](./docs/development/CLIMATE_NORMALS_PLAN.md) and [Analytics Plan](./docs/analytics/ANALYTICS_MCP_PLAN.md)
+
+### Quality reports (dated snapshots)
+
+- [Code Review](./docs/development/CODE_REVIEW.md) and [Code Quality Report v1.6](./docs/development/CODE_QUALITY_REPORT_V1.6.md)
+- [Test Coverage Analysis 2025](./docs/testing/TEST_COVERAGE_ANALYSIS_2025.md), [Coverage Report v1.0](./docs/testing/TEST_COVERAGE_REPORT_V1.0.md), [Test Recommendations](./docs/testing/TEST_RECOMMENDATIONS.md), [Test Quality Assessment v1.2](./docs/development/TEST_QUALITY_ASSESSMENT_V1.2.md), [Critical Test Gaps](./docs/development/TEST_GAPS_CRITICAL.md)
+- [Documentation Maintenance Summary](./docs/development/DOCUMENTATION_MAINTENANCE_SUMMARY.md)
+- [Release history](./docs/releases/CHANGELOG.md) (through 1.6.0) and [v0.1.0 release notes](./docs/releases/RELEASE_NOTES_v0.1.0.md)
+- [Project Description](./docs/PROJECT_DESCRIPTION.md) - the original requirements
 
 ## License
 
@@ -1423,6 +1482,7 @@ MIT
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 For information about code quality, security considerations, and development best practices, see:
+- [TODO.md](./docs/TODO.md) - Open work you could pick up
 - [CODE_REVIEW.md](./docs/development/CODE_REVIEW.md) - Comprehensive code quality analysis
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 - [SECURITY.md](./SECURITY.md) - Security policy and vulnerability reporting

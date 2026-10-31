@@ -1,5 +1,7 @@
 # Future Optional Enhancements
 
+> Research notes on possible features. For the short list of concrete open work, see [../TODO.md](../TODO.md). What has shipped is in the [Changelog](../../CHANGELOG.md).
+
 ## Purpose
 
 This document catalogs potential future enhancements for the Weather MCP Server beyond v1.0.0. These features were identified through analysis of user needs, available data sources, and gaps in current functionality. Each enhancement is evaluated for alignment with the project's core philosophy: **lean, efficient, user-focused weather data for AI systems**.

@@ -17,11 +17,12 @@ This document provides context and guidelines for AI assistants (Codex, etc.) wo
 
 ```
 src/
-├── index.ts                    # MCP server entry point, tool registry
+├── index.ts                    # stdio entry point (node dist/index.js)
+├── mcpServer.ts                # Tool registry + handlers: createServices(), createMcpServer(); no side effects on import
 ├── handlers/                   # Tool request handlers (one per MCP tool)
 │   ├── forecastHandler.ts
 │   ├── nomadsForecastHandler.ts        # Raw NOMADS/GFS model-run forecast
-│   ├── modelComparisonHandler.ts       # Multi-model (GFS/NAM/HRRR/ECMWF proxy) comparison
+│   ├── modelComparisonHandler.ts       # Multi-model comparison (GFS/NAM/HRRR from NOMADS; ECMWF IFS/AIFS, ICON, GEM from Open-Meteo)
 │   ├── currentConditionsHandler.ts
 │   ├── alertsHandler.ts
 │   ├── historicalWeatherHandler.ts
@@ -31,24 +32,30 @@ src/
 │   ├── marineConditionsHandler.ts
 │   ├── riverConditionsHandler.ts
 │   ├── wildfireHandler.ts
-│   ├── weatherImageryHandler.ts        # RainViewer radar/precipitation imagery
+│   ├── weatherImageryHandler.ts        # Multi-provider radar (NWS MRMS, IEM archive, RainViewer), NOAA GOES satellite, QPE point amounts, MCP image content
 │   ├── lightningHandler.ts             # Blitzortung real-time lightning
 │   └── savedLocationsHandler.ts        # Saved locations management (v1.7.0)
 ├── services/                   # External API clients
-│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges)
+│   ├── noaa.ts                 # NOAA Weather API client (forecasts, alerts, NWPS river gauges, USGS water services)
 │   ├── openmeteo.ts            # Open-Meteo API client (forecast, historical, air quality, marine,
 │   │                           #   climate normals, daily temperature archive for climate explorer)
+│   ├── dailyRecordStore.ts     # On-disk (gzip JSON) copies of the climate explorer's full daily records, so restarts don't re-download them
 │   ├── nomads.ts               # NOMADS/NCEP model-run client (GFS, NAM, HRRR)
 │   ├── modelComparison.ts      # Orchestrates multi-model comparison
 │   ├── nominatim.ts            # Nominatim/OSM geocoding client (v1.7.0)
 │   ├── locationStore.ts        # Saved locations storage service (v1.7.0)
 │   ├── nifc.ts                 # NIFC wildfire ArcGIS API client
-│   ├── usgs.ts                 # USGS water services client
+│   ├── geocoding.ts            # Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
+│   ├── ncei.ts                 # NOAA NCEI climate normals client (optional token)
+│   ├── radar/                  # Multi-provider radar sources (NwsRadarSource, IemRadarSource, RainViewerRadarSource) + NwsQpeService + NwsGoesSatelliteService
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
-├── web/                        # Web console (browser UI + HTTP API)
-│   └── server.ts               # Node http server; drives real MCP server over stdio;
-│                               #   serves /api/climate for the climate explorer
+├── web/                        # HTTP server: /mcp for AI clients + web console
+│   ├── server.ts               # Entry point (npm run web)
+│   ├── app.ts                  # Routes: /mcp, /, /api/*, /health; /api/climate for the climate explorer
+│   ├── config.ts               # WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN parsing
+│   ├── access.ts               # Host (DNS rebinding), Origin (CSRF), bearer token checks
+│   └── envDefaults.ts          # ENABLED_TOOLS=all default, imported before config/tools
 ├── types/                      # TypeScript type definitions
 │   ├── noaa.ts
 │   ├── openmeteo.ts
@@ -60,7 +67,8 @@ src/
 │   ├── lightning.ts            # Lightning strike/safety types
 │   └── wildfire.ts             # NIFC wildfire types
 ├── utils/                      # Shared utilities
-│   ├── cache.ts                # LRU cache with TTL
+│   ├── cache.ts                # LRU cache with TTL (limited by entry count)
+│   ├── byteBudgetCache.ts      # LRU cache limited by memory, for large entries (the climate explorer's daily records)
 │   ├── validation.ts           # Input validation
 │   ├── units.ts                # Unit conversions
 │   ├── logger.ts               # Structured logging (stderr only)
@@ -79,13 +87,21 @@ src/
 │   ├── timezone.ts             # Luxon-based timezone-aware formatting
 │   ├── temperatureConversion.ts# °C ↔ °F helpers
 │   ├── geography.ts            # Great Lakes / coastal bay geographic detection
+│   ├── radarCoverage.ts        # US/territory radar workspace detection + EPSG:3857 Web Mercator bbox math
+│   ├── pngComposite.ts         # Zero-dependency PNG decoder/compositor/encoder (node:zlib) for MCP radar image content
 │   └── version.ts              # Package version helper
 ├── config/                     # Configuration
 │   ├── cache.ts                # Cache TTL settings + env-var parsing
 │   ├── tools.ts                # Tool configuration (presets, aliases, ENABLED_TOOLS)
 │   ├── api.ts                  # Optional API tokens (NCEI)
 │   └── displayThresholds.ts    # Display logic constants
-├── analytics/                  # Optional analytics middleware
+├── analytics/                  # Optional, off by default (ANALYTICS_ENABLED)
+│   ├── index.ts, config.ts     # Entry point (withAnalytics) and env-var config
+│   ├── collector.ts            # Event collection
+│   ├── anonymizer.ts           # Anonymization (no coordinates or location names)
+│   ├── transport.ts            # HTTPS event delivery
+│   ├── middleware.ts           # Tool-call instrumentation
+│   └── types.ts
 └── errors/                     # Custom error classes
     └── ApiError.ts
 web/
@@ -102,14 +118,14 @@ tests/
 3. **Validation First:** All user inputs validated before processing (see `src/utils/validation.ts`)
 4. **Caching Strategy:** LRU cache with TTL based on data volatility (see `src/config/cache.ts`)
 5. **Error Hierarchy:** Custom error classes for different failure scenarios (`src/errors/ApiError.ts`)
-6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/index.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
-7. **Web Console Pattern:** `src/web/server.ts` spawns `dist/index.js` as a child process and communicates via MCP stdio — the browser UI talks to the **real** MCP server, not a mock
+6. **Saved-Location Injection:** `applySavedLocation()` (`src/utils/locationResolver.ts`), applied in `src/mcpServer.ts` to tools in `SAVED_LOCATION_TOOLS`, swaps `location_name` for coordinates before handlers run, so most handlers need no special logic
+7. **One Server, Several Transports:** `src/mcpServer.ts` builds MCP servers from shared services. `src/index.ts` serves one over stdio; `src/web/app.ts` serves `/mcp` over Streamable HTTP and gives the console an in-process MCP client (in-memory transport), so the browser UI exercises the **real** MCP code path, not a mock
 
 ## Key Features (18 MCP Tools)
 
-1. **get_forecast** - Up to 16-day forecasts (NOAA/Open-Meteo auto-select by location); precipitation type; climate normals; snow/ice; timezone-aware output
+1. **get_forecast** - Up to 16-day forecasts (NOAA/Open-Meteo auto-select by location), or one chosen model's forecast (`model`: ecmwf, ecmwf_aifs, icon, gem, gfs, nam, hrrr, via Open-Meteo); precipitation type; climate normals; snow/ice; timezone-aware output
 2. **get_forecast_nomads** - Raw forecast from the latest NOMADS/NCEP GFS model run (global)
-3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF proxy (Open-Meteo) side by side; HRRR is CONUS-only and opt-in
+3. **get_model_comparison_forecast** - Compare GFS, NAM, HRRR (NOMADS) and ECMWF IFS, ECMWF AIFS, ICON, GEM (Open-Meteo) side by side; HRRR (CONUS-only) and AIFS are opt-in
 4. **get_current_conditions** - Current weather + optional fire weather indices (NOAA, US only); climate normals; snow depth
 5. **get_alerts** - Weather alerts/warnings (NOAA, US only)
 6. **get_historical_weather** - Historical data 1940-present (Open-Meteo, global); recent 7 days via NOAA (US only)
@@ -117,7 +133,7 @@ tests/
 8. **search_location** - Location search/geocoding (Nominatim/OSM)
 9. **get_air_quality** - AQI + pollutants + UV index (Open-Meteo, global)
 10. **get_marine_conditions** - Wave height, swell, currents; auto-selects NOAA for Great Lakes/coastal bays, Open-Meteo for oceans
-11. **get_weather_imagery** - Precipitation radar / animated loops (RainViewer, global)
+11. **get_weather_imagery** - Weather radar, animated loops, historical radar, and satellite imagery: NOAA/NWS MRMS across US & territories (base/composite reflectivity, echo tops, precip type), IEM NEXRAD archive back to 2011 (`at`), RainViewer global fallback, NOAA NESDIS GOES-19/18 satellite (`type: "satellite"`, GeoColor/visible/IR/water vapor), optional 1–72h radar-estimated precipitation amounts (`include_values` via NWS MRMS QPE), and optional MCP vision image content (`include_image: true`)
 12. **get_lightning_activity** - Real-time lightning detection (Blitzortung.org, global)
 13. **get_river_conditions** - River levels and flood monitoring (NOAA NWPS + USGS, US only)
 14. **get_wildfire_info** - Active wildfire tracking (NIFC WFIGS, US only)
@@ -136,20 +152,22 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 
 ### Architecture
 
-`src/web/server.ts` is a plain Node `http` server (no framework) that:
-1. Starts `dist/index.js` as a child process and connects to it with the MCP SDK `Client` over `StdioClientTransport`, reconnecting on the next request if it exits
-2. `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
+`src/web/app.ts` is a plain Node `http` server (no framework), started by `src/web/server.ts`. One process, one set of services (caches, `LocationStore`) shared by AI clients and the console:
+1. `POST /mcp` is a stateless Streamable HTTP MCP endpoint (a fresh `createMcpServer()` + transport per request; `GET`/`DELETE` return 405)
+2. The console uses an in-process MCP `Client` connected over `InMemoryTransport`: `GET /api/tools` lists tools; `POST /api/call` (`{name, arguments}`) runs one via `client.callTool` and returns `{content, isError, elapsedMs}` (180 s timeout, only tools the server lists)
 3. `GET /api/saved-locations` and `GET /api/geocode?q=` read `LocationStore` / call Nominatim directly for the location helper
 4. `GET /api/climate` serves the climate explorer (see below)
-5. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
+5. `GET /health` returns `{status, version, uptimeSeconds}` (for Docker health checks)
+6. Serves `web/index.html`, re-read on every request so page edits show on refresh (TypeScript changes need a restart)
 
 `web/index.html` is a self-contained single page (vanilla JS, no build step, ~87 KB):
 - Builds forms dynamically from each tool's JSON schema; remembers each tool's last inputs in localStorage
-- **Location helpers:** saved-location picker, name search, browser geolocation
-- **Radar view:** RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–7); pin at the location
+- **Compact forms:** latitude/longitude/location_name fields live in a folded `.coords` group (toggled from the location bar), descriptions are hidden unless **Show help** (`weather-console:show-help`), booleans render as chip `.field`s in one `.toggles` row, and after a successful run `#tool-card.collapsed` folds the form into a one-line `summarizeArgs()` summary with Edit / Run again. `readForm()` still reads every `.field`, hidden or not
+- **Location helpers:** one-row bar with saved-location picker, name search, browser geolocation, a `📍` readout (`describeLocation()`), and the Coordinates toggle
+- **Radar view:** NWS GeoServer WMS, IEM WMS-T, and RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–11 for WMS, 3–7 for RainViewer), pin at the location, and a Play/Pause frame timeline slider for multi-frame animations
 - **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
 
-Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` (CSRF); JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
+Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Origin` (CSRF) against loopback names plus `WEB_ALLOWED_HOSTS`; optional bearer token on `/mcp` and `/api/*`; JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
 
 ### Climate Explorer
 
@@ -173,6 +191,7 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 - Year / month stepping, "last 12 months" mode
 - Selectable normals baseline (1991–2020, 1961–1990, 1951–1980, all years)
 - Drag-to-zoom with double-click to zoom back out
+- Fixed temperature axis while stepping years: year views use the whole record's range, month views that month's range across all years (cached in `cx.domainCache`); zoom and last-12-months fit the view
 - Keyboard navigation (←/→ day, Page Up/Down week, Home/End, Esc)
 - Hover tooltip with percentile rank of the hovered day's temperature
 - Pointer-following temperature guide line
@@ -181,9 +200,23 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 - Percentile ranks are interpolated in the page from the server's 21 quantiles (`percentileRank` in the page mirrors the one in `climatology.ts`)
 - Only the chart and tiles redraw on view changes (not the full card)
 
-### Environment Variables (web console)
+### Environment Variables (web server)
+- `WEB_HOST` — address to listen on (default `127.0.0.1`; `0.0.0.0` in a container)
 - `WEB_PORT` — HTTP port (default `8787`)
+- `WEB_ALLOWED_HOSTS` — extra hostnames/IPs clients may use, comma-separated (loopback names always allowed)
+- `WEATHER_MCP_TOKEN` — if set (16+ chars), `/mcp` and `/api/*` require `Authorization: Bearer <token>`; the console shows a sign-in box
+- `WEATHER_MCP_DATA_DIR` — data folder: `locations.json`, `requests.log`, and the climate explorer's saved records in `climate/` (default `~/.weather-mcp`; also honored by the stdio entry)
 - `ENABLED_TOOLS` — which MCP tools to expose (defaults to `all` in web mode)
+
+### Docker
+
+`Dockerfile` + `docker-compose.yml` run the web server (`/mcp` + console) in one container on port 3003, with saved locations on a `./data` volume and settings from `.env` (see `.env.example`). User guide (setup, settings, security, troubleshooting): `docs/DOCKER.md`; remote client configs: `docs/CLIENT_SETUP.md`; design and test results: `docs/planning/DOCKER_DEPLOYMENT_PLAN.md`. Keep `docs/DOCKER.md` in sync when the Dockerfile, compose file, or settings change.
+- Base is `node:22-bookworm-slim` (glibc; the GRIB decoder has no musl/Alpine builds)
+- The `deps` stage installs `@mattnucc/gribberish-wasm32-wasi` only when the native decoder won't load (e.g. `linux/arm64`); keep its version pinned to `@mattnucc/gribberish`
+- The container is hardened (non-root `node` user, read-only root filesystem, `cap_drop: ALL`); anything that writes files must use `WEATHER_MCP_DATA_DIR` (`/app/data`) or `/tmp`
+- stdio access: `docker exec -i weather-mcp node dist/index.js`
+- Compose settings (in `.env`): `WEATHER_MCP_BIND` (`127.0.0.1` for this-computer-only, default `0.0.0.0`), `WEATHER_MCP_PORT`, `WEATHER_MCP_DATA` (host folder for saved locations, `requests.log` and the climate explorer's `climate/` records; default `./data`; use an absolute path, e.g. `~/.weather-mcp` expanded, to keep personal coordinates out of a cloud-synced project folder)
+- Everything that writes files honors `WEATHER_MCP_DATA_DIR`: saved locations, the analytics salt, `requests.log`, and the climate explorer's saved records (`climate/`)
 
 ## Development Guidelines
 
@@ -201,8 +234,8 @@ Security: binds to `127.0.0.1` only; checks `Host` (DNS rebinding) and `Origin` 
 2. **Validation:** Add validators to `src/utils/validation.ts`
 3. **Handler:** Create handler in `src/handlers/` following existing patterns
 4. **Service (if needed):** Add API methods to the relevant service in `src/services/`
-5. **Tool Registration:** Register in `src/index.ts` (both `ListToolsRequestSchema` and `CallToolRequestSchema`)
-6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/index.ts` or call `resolveLocation()` in the handler
+5. **Tool Registration:** Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` and the `CallToolRequestSchema` switch in `createMcpServer()`)
+6. **Saved Location Support:** Add `location_name` to the tool schema and either add it to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts` or call `resolveLocation()` in the handler
 7. **Tests:** Write comprehensive unit + integration tests
 8. **Documentation:** Update `README.md`, `CHANGELOG.md`, and this file
 
@@ -221,6 +254,8 @@ throw new InvalidLocationError('NOAA', 'Coordinates outside US coverage');
 ```
 
 **Security:** All errors are sanitized via `formatErrorForUser()` before returning to users.
+
+**Rate limits:** `RateLimitError` takes its help links from `RATE_LIMIT_HELP_LINKS` (one entry per service, enforced by the compiler), so a limit never points at another provider's docs. Pass the upstream's own explanation as the message when it gives one: Open-Meteo reports which limit was hit (per minute, hour or day) in the response's `reason`, which `OpenMeteoService.handleError` shows to the user. Open-Meteo counts requests covering many days as several calls (the climate explorer's 86-year download is one of the heaviest), so retrying within the same minute rarely helps and the service does not.
 
 ### Logging
 
@@ -274,11 +309,27 @@ tests/
 │   ├── precip-type.test.ts             # Precipitation type classification
 │   ├── climatology.test.ts             # Per-calendar-day percentile curves
 │   ├── imagery-handler.test.ts         # Weather imagery handler
+│   ├── radar-sources.test.ts           # Multi-provider radar (NWS, IEM archive, RainViewer fallback), QPE point amounts, Web Mercator bbox parity (local stub server)
 │   ├── lightning-handler.test.ts       # Lightning handler
 │   ├── rainviewer.test.ts              # RainViewer tile calculations
 │   ├── location-resolver.test.ts       # Location resolver
 │   ├── saved-locations-activities.test.ts  # Saved locations + activity tags
 │   ├── nomads-hrrr-domain.test.ts      # HRRR CONUS bounding box
+│   ├── nomads-grib-loading.test.ts     # GRIB decoder loads lazily; clear error when unavailable (ARM)
+│   ├── request-logger.test.ts          # requests.log honors WEATHER_MCP_DATA_DIR
+│   ├── openmeteo-rate-limit.test.ts    # Open-Meteo 429 handling: its reason, Retry-After, service-specific links (local stub server)
+│   ├── byte-budget-cache.test.ts       # Memory-limited LRU cache
+│   ├── openmeteo-daily-record-cache.test.ts  # Daily record cache stays within its memory budget (local stub server)
+│   ├── daily-record-store.test.ts      # On-disk climate records: round trip, corrupt/oversized files, pruning, no coordinates in logs
+│   ├── openmeteo-daily-record-disk.test.ts  # Disk-backed records: restart reuse, 100-day top-up, stale fallback, shared in-flight loads (local stub server)
+│   ├── web-climate-disk.test.ts        # /api/climate across a restart, and the refreshNote when a refresh fails
+│   ├── web-config.test.ts              # Web server settings + Host/Origin/token checks
+│   ├── web-server.test.ts              # Real HTTP server: /mcp over an SDK client, console API, 401/403/405
+│   ├── nomads-run-selection.test.ts    # NOMADS picks a fully posted run (probes the last hour needed)
+│   ├── nomads-precipitation.test.ts    # NOMADS rain from differenced run totals; partial-day highs/lows left out
+│   ├── forecast-model.test.ts          # get_forecast's model option: models= param, trimmed horizon, missing fields, out-of-area errors (local stub server)
+│   ├── model-comparison.test.ts        # Open-Meteo comparison models: request params, per-model cache, run-time staleness, horizons, aliases (local stub server)
+│   ├── web-climate.test.ts             # /api/climate end to end with a stub Open-Meteo: shape, reuse across baselines, failures not cached, bad input
 │   └── ncei.test.ts                    # NCEI service
 └── integration/                        # Integration tests (live API calls)
     ├── error-recovery.test.ts
@@ -293,6 +344,8 @@ tests/
 - **Coverage Target:** 100% on critical utilities (cache, validation, units, errors, AQI, fire weather)
 - **Performance:** All unit tests must complete in < 2 seconds
 - **No Flakiness:** Tests must be deterministic; timezone-sensitive tests pin Luxon's zone to UTC+14
+- **Clean environment:** the default-value tests read `API_TIMEOUT_MS`, `ENABLED_TOOLS`, `CACHE_ENABLED`, `CACHE_MAX_SIZE` and `LOG_LEVEL`; run tests with those unset in your shell
+- **Unit vs integration:** `tests/unit` (1,264 tests) needs no network and runs in about a second; `tests/integration` (62 tests) calls live APIs and can fail on upstream outages
 
 ### Running Tests
 
@@ -361,8 +414,9 @@ Defense-in-depth: array processing is capped to prevent resource exhaustion:
 
 ### Web Console Security
 
-- Server binds to `127.0.0.1` only (no external exposure)
-- `Origin` and `Host` header validation blocks cross-site requests from pages you visit elsewhere
+- Server binds to `127.0.0.1` by default; set `WEB_HOST=0.0.0.0` (e.g. in a container) only together with `WEB_ALLOWED_HOSTS` and `WEATHER_MCP_TOKEN` (the server warns if a non-loopback bind has no token)
+- `Host` validation (DNS rebinding) and `Origin` validation (CSRF) accept only loopback names and `WEB_ALLOWED_HOSTS`
+- Optional bearer token on `/mcp` and `/api/*`, compared in constant time; `/` and `/health` stay open (no data)
 - Request bodies must be `application/json` and are capped at 64 KB; only tools the MCP server lists can be called
 - All tool calls pass through the same input validation as the MCP server; `/api/climate` validates coordinates and the baseline itself
 - The page's CSP allows only inline scripts/styles and same-origin requests
@@ -398,8 +452,12 @@ NCEI_API_TOKEN=                  # Free NOAA NCEI token for official US climate 
 # Lightning
 BLITZORTUNG_MQTT_URL=            # Override MQTT broker URL (default: public Blitzortung broker)
 
-# Web Console
-WEB_PORT=8787                    # Web console port (default: 8787)
+# Web server (npm run web: /mcp endpoint + console)
+WEB_HOST=127.0.0.1               # Listen address (0.0.0.0 in a container)
+WEB_PORT=8787                    # Port (default: 8787)
+WEB_ALLOWED_HOSTS=               # Extra hostnames/IPs, e.g. raspberrypi.local,192.168.1.20
+WEATHER_MCP_TOKEN=               # Bearer token for /mcp and /api/* (openssl rand -hex 32)
+WEATHER_MCP_DATA_DIR=            # Data folder: saved locations, request log, climate records (default: ~/.weather-mcp)
 ```
 
 ### Tool Presets
@@ -423,7 +481,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 | Location searches | 30 days |
 | Weather stations | 24 hours |
 | Climate normals | ∞ (static historical data) |
-| Daily temperature archive (climate explorer) | ∞, keyed by coordinates and end date (so a new day means a new entry) |
+| Daily temperature archive (climate explorer) | Memory: no expiry, limited to 96 MiB (about 50 places, least recently used dropped first), keyed by coordinates and end date (so a new day means a new entry). Disk: one gzip file per place in `<data dir>/climate/` (about 100-200 KB each, folder limited to 128 MiB, least recently used deleted first); survives restarts. A saved record is topped up by re-fetching its last 100 days (recent values get revised) plus the new days, about 2 calls instead of about 680; if that fails (e.g. rate limit) the saved record is shown with a note |
 | Forecasts | 2 hours |
 | Marine conditions | 1 hour |
 | Air quality | 1 hour |
@@ -440,7 +498,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 ### Cache Implementation
 
 - **Algorithm:** LRU (Least Recently Used) eviction
-- **Size limits:** Configurable max size (default 1000 entries)
+- **Size limits:** Configurable max size (default 1000 entries), plus a separate memory-limited cache (`ByteBudgetCache`, 96 MiB by default) for the climate explorer's full daily records. A parsed record is about 2 MB, so an entry-count limit alone would let browsing many places grow memory without bound; measured with garbage collection forced, 100 places held 195 MB under the entry-count cache and stay at the 96 MiB budget now. Those records are also saved to disk (`DailyRecordStore`, `<data dir>/climate/`), so memory is only a fast layer. Anything else cached in bulk should use `ByteBudgetCache` too
 - **Automatic cleanup:** Every 5 minutes
 - **Graceful shutdown:** Cleanup on SIGTERM/SIGINT
 
@@ -455,7 +513,7 @@ Flexible syntax: `ENABLED_TOOLS=basic,+historical,+air_quality` or `ENABLED_TOOL
 
 ### Adding `location_name` Support to a New Tool
 
-For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/index.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
+For most handlers, simply add the tool name to `SAVED_LOCATION_TOOLS` in `src/mcpServer.ts`. The `applySavedLocation()` middleware will inject coordinates before the handler runs. For handlers that need to resolve the name themselves (e.g., NOMADS):
 
 ```typescript
 import { resolveLocation } from '../utils/locationResolver.js';
@@ -523,11 +581,24 @@ Fetches a deterministic forecast directly from the latest NOMADS/NCEP GFS model 
 
 ### get_model_comparison_forecast
 
-Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same location/date range.
+Compares models side by side for the same location/date range. Defaults: GFS, NAM, ECMWF, ICON, GEM; `hrrr` and `ecmwf_aifs` are opt-in (`DEFAULT_COMPARISON_MODELS` in `src/types/modelComparison.ts`).
+
+- **Open-Meteo models:** ECMWF IFS (`ecmwf_ifs`), ECMWF AIFS (`ecmwf_aifs025_single`), ICON (`icon_global`) and GEM (`gem_global`), one `/forecast?models=` request each via `OpenMeteoService.getModelForecast` (cached 2 h), so one failing model doesn't hide the others. Model ids live in `OPEN_METEO_MODELS` (`src/services/openmeteo.ts`); Open-Meteo renames models occasionally, so check them against the live API when something breaks.
+- **Run times:** `getModelRunTime` reads `<host>/data/<model>/static/meta.json` (`last_run_initialisation_time`) and ignores anything older than 48 h (GEM's metadata was months stale when checked), showing "time not reported" instead.
+- **Horizons:** Open-Meteo returns nulls past a model's reach (ICON ~7.5 days, GEM 10, ECMWF 15); those days are dropped and shown as N/A. GEM keeps reporting precipitation chance after its temperatures stop, so a day needs a temperature or precipitation total to count.
+- **Old name:** `ecmwf_proxy` (formerly Open-Meteo's automatic blend) is accepted as an alias for `ecmwf` (`MODEL_ALIASES` in the handler).
+
+### get_forecast with `model`
+
+`model` (ecmwf, ecmwf_aifs, icon, gem, gfs, nam, hrrr; `FORECAST_MODELS` in `src/services/openmeteo.ts`) makes `get_forecast` return that model's own forecast from Open-Meteo (`getForecast(..., model)` adds `models=`), daily or hourly, anywhere, bypassing NOAA/NOMADS; combining it with `source: "noaa"`/`"nomads"` is an error. Open-Meteo returns nulls for fields a model lacks and past its run; `getForecast` turns nulls into missing entries (the formatter checks `!== undefined`; a null would print 0°F or crash on `toFixed`), and for a chosen model drops the empty tail so only days with data are shown, with a note. A regional model outside its area (NAM/HRRR outside CONUS) gets a 400 from Open-Meteo, rethrown as `DataNotFoundError` with an explanation. Tests: `tests/unit/forecast-model.test.ts`.
 
 - **HRRR (opt-in):** 3 km CONUS-only model; only the synoptic cycles (00/06/12/18Z) that post a full 48h horizon are used. Requests outside CONUS are rejected with a clear error. Values beyond the ~48h deterministic horizon are marked N/A.
 - **NAM:** Lambert Conformal Conic grid; nearest-value extraction handled by `src/utils/gribGrid.ts` (correct curvilinear grid math).
 - **Per-model horizon handling:** each model's values are marked N/A beyond its deterministic horizon.
+- **Run selection (NOMADS):** `findLatestAvailableRun` probes the *last* forecast hour the request needs, newest cycle first. NOAA posts a run's files over an hour or two, so probing an early hour picked runs still being posted and then failed on later hours (`tests/unit/nomads-run-selection.test.ts`).
+- **Precipitation chance (NOMADS):** for GFS/NAM/HRRR this is the share of the day's time steps with precipitation in that single run, not a probability (marked † in the output); Open-Meteo rows use Open-Meteo's own value (none for AIFS). Each file has two `APCP` messages (run total since the run start, and a recent bucket: GFS 3/6 h, NAM 3 h, HRRR 1 h); `findRunTotalPrecipitation` takes the run total (its `forecastDate` equals the run's reference time) and `precipitationFromRunTotals` differences consecutive steps. Never sum the files' values directly (`tests/unit/nomads-precipitation.test.ts`).
+- **Partial days (NOMADS):** `aggregateDaily` leaves a day's low as NaN unless it has a sample by 06:00 local, and its high unless samples span 13:00-17:00, because runs start and end mid-day.
+- **Output:** one Markdown table per day (`| Model | High | Low | Precip chance | Precip total | Peak wind | Humidity |`, numbers right-aligned with `---:`) plus a **Range** row across models; the web console's `renderMarkdown` honors column alignment.
 
 ## Common Tasks
 
@@ -536,7 +607,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 1. Create handler: `src/handlers/newFeatureHandler.ts`
 2. Define types: `src/types/`
 3. Add service method if needed: `src/services/`
-4. Register in `src/index.ts` (ListTools + CallTool handlers)
+4. Register in `src/mcpServer.ts` (`TOOL_DEFINITIONS` + the CallTool switch in `createMcpServer()`)
 5. Add `location_name` support: either add to `SAVED_LOCATION_TOOLS` or call `resolveLocation()` in handler
 6. Write tests: `tests/unit/` and `tests/integration/`
 7. Update `README.md`, `CHANGELOG.md`, and this file
@@ -552,7 +623,7 @@ Compares GFS, NAM, and ECMWF proxy (Open-Meteo) side by side for the same locati
 
 ### Adding a Climate Explorer Data Source
 
-The `/api/climate` endpoint in `src/web/server.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
+The `/api/climate` endpoint in `src/web/app.ts` calls `OpenMeteoService.getDailyTemperatureRecord()` for the full archive, then passes it to `computeClimatology()` from `src/utils/climatology.ts`. To add a new data source or extend the climatology (e.g., wind normals), update those two files and the relevant section of `web/index.html`.
 
 ### Debugging
 
@@ -580,7 +651,7 @@ npm run build
 ```bash
 npm run build          # TypeScript compilation (0 errors)
 npm test               # All tests passing (100%)
-npm audit              # No critical vulnerabilities
+npm audit              # Review advisories; known open ones are noted under Project Status
 ```
 
 ### Code Review Checklist
@@ -600,10 +671,11 @@ npm audit              # No critical vulnerabilities
 
 - **Version:** 1.7.0 + Unreleased features (see CHANGELOG.md [Unreleased] section)
 - **Status:** Production Ready ✅
-- **Unreleased additions:** Web console, climate explorer, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
-- **Security Rating:** A- (Excellent, 93/100)
-- **Test Coverage:** 1,060+ tests, 100% pass rate
-- **Code Quality:** A+ (Excellent, 97.5/100)
+- **Unreleased additions:** Web console, climate explorer (records saved on disk), Docker deployment, NOMADS/HRRR model forecasts, multi-model comparison, precipitation type classification, request lifecycle logging, NAM grid fix, timezone correctness fixes
+- **Security Rating:** A- (Excellent, 93/100), from the v1.6.0 audit (2025-11-10), which predates saved locations, the web console/HTTP endpoint, and Docker
+- **Tests:** 1,326 (1,264 unit, 62 integration); all unit tests pass (integration tests call live APIs and were not part of the last full check)
+- **Dependency audit:** `npm audit` reports open advisories, in production dependencies (including `@modelcontextprotocol/sdk` and `axios`) and in dev tooling. A dependency upgrade is pending; it is a larger change (test tooling and the MCP SDK) and is being handled separately
+- **Code Quality:** A+ (Excellent, 97.5/100), from the same audit
 
 ## Commit Conventions
 
@@ -655,6 +727,11 @@ Co-Authored-By: Claude <noreply@anthropic.com>
   - `README.md` — User-facing documentation
   - `CHANGELOG.md` — Version history
   - `docs/WEB_CONSOLE.md` — Web console and climate explorer user guide
+  - `docs/DOCKER.md` — Running in Docker / on a Raspberry Pi
+  - `docs/TODO.md` — Open work in priority order; update it when you finish or find something (it is linked from the README and docs index)
+  - `docs/APPLICATION_FLOW.md` — Runtime flow, including the climate explorer request
+  - `.github/CACHING.md` — Caching layers, including climate records saved on disk
+  - `docs/README.md` — Index of every document; add new docs there and in the README's Documentation section
   - `docs/development/CODE_REVIEW.md` — Code quality assessment
   - `docs/development/SECURITY_AUDIT_V1.6.md` — Security analysis
 
@@ -666,6 +743,6 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 
 ---
 
-**Last Updated:** 2026-09-29 (Unreleased — web console + climate explorer, NOMADS/HRRR model forecasts, precipitation type, request lifecycle logging, NAM grid/timezone fixes)
+**Last Updated:** 2026-10-25 (Unreleased — web console + climate explorer, climate records saved on disk, Docker deployment, NOMADS/HRRR model forecasts, precipitation type, request lifecycle logging, NAM grid/timezone fixes)
 
 This document should be updated whenever major architectural changes are made or new patterns are introduced.

@@ -227,7 +227,7 @@ class NominatimProvider implements GeocodingProvider {
           throw new ServiceUnavailableError('OpenMeteo', 'Nominatim geocoding service timed out');
         }
         if (error.response?.status === 429) {
-          throw new RateLimitError('OpenMeteo', 'Nominatim geocoding rate limit exceeded (1 req/sec limit)');
+          throw new RateLimitError('Nominatim', 'Nominatim geocoding rate limit exceeded (1 req/sec limit)');
         }
       }
       logger.debug(`Nominatim error: ${error instanceof Error ? error.message : 'Unknown'}`);

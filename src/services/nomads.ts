@@ -1,6 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { DateTime } from 'luxon';
-import { parseMessagesFromBuffer } from '@mattnucc/gribberish';
 import { Cache } from '../utils/cache.js';
 import { CacheConfig } from '../config/cache.js';
 import { validateLatitude, validateLongitude } from '../utils/validation.js';
@@ -14,6 +13,7 @@ import {
   ServiceUnavailableError,
 } from '../errors/ApiError.js';
 import type { NomadsForecastResponse } from '../types/nomads.js';
+import { logger } from '../utils/logger.js';
 
 interface NomadsServiceConfig {
   timeout?: number;
@@ -38,7 +38,52 @@ interface TimeStepData {
   temperatureF?: number;
   humidityPct?: number;
   windMph?: number;
+  /** Precipitation since the run started, as the file reports it */
+  precipTotalSinceRunIn?: number;
+  /** Precipitation in the interval ending at this step (from consecutive run totals) */
   precipitationIn?: number;
+}
+
+/**
+ * The APCP message holding precipitation accumulated since the run started.
+ *
+ * Most NOMADS files carry two APCP messages: that run total, and a "bucket" for the last
+ * few hours (GFS 3 or 6 h, NAM 3 h, HRRR 1 h). The decoder reports each message's
+ * forecastDate as the start of its accumulation period, so the run total is the one that
+ * starts at the run's reference time. (Taking the larger of the two, as this code once did,
+ * picked the run total and then summed run totals, inflating daily totals more and more with
+ * lead time: 6 in for a day other models put under 0.4 in.)
+ */
+export function findRunTotalPrecipitation<T extends Pick<GribMessage, 'varAbbrev' | 'forecastDate' | 'referenceDate'>>(
+  messages: T[],
+  runStart: Date
+): T | undefined {
+  return messages.find((m) =>
+    m.varAbbrev === 'APCP' &&
+    m.forecastDate instanceof Date &&
+    m.forecastDate.getTime() === (m.referenceDate ?? runStart).getTime()
+  );
+}
+
+/**
+ * Precipitation in each interval from the run totals at consecutive steps (the first
+ * step, the analysis, has none). A missing total leaves that step unknown and the next
+ * known total covers both intervals. Small negative differences from rounding become 0.
+ */
+export function precipitationFromRunTotals(totals: Array<number | undefined>): Array<number | undefined> {
+  let previous = 0;
+  return totals.map((total, i) => {
+    if (i === 0) {
+      previous = total ?? 0;
+      return undefined;
+    }
+    if (typeof total !== 'number' || !Number.isFinite(total)) {
+      return undefined;
+    }
+    const interval = Math.max(0, total - previous);
+    previous = total;
+    return interval;
+  });
 }
 
 interface ModelFetchConfig {
@@ -53,6 +98,42 @@ interface ModelFetchConfig {
   directoryBuilder: (date: string, cycle: string) => string;
 }
 
+type GribParser = (buffer: Buffer) => GribMessage[];
+
+let gribParserPromise: Promise<GribParser> | null = null;
+
+/**
+ * Load the GRIB decoder on first use.
+ *
+ * @mattnucc/gribberish is a native module with prebuilt binaries for only some
+ * platforms (none for linux-arm64, e.g. a Raspberry Pi). Importing it at module
+ * load would stop the whole MCP server from starting there; loading it lazily
+ * limits the failure to NOMADS requests. The result, success or failure, is
+ * cached because the platform won't change while the process runs.
+ */
+export function loadGribParser(): Promise<GribParser> {
+  gribParserPromise ??= import('@mattnucc/gribberish')
+    .then((grib) => (buffer: Buffer) => grib.parseMessagesFromBuffer(buffer) as unknown as GribMessage[])
+    .catch((error: unknown) => {
+      const cause = error instanceof Error ? error : new Error(String(error));
+      logger.error('GRIB decoder unavailable; NOMADS model data disabled', cause, {
+        platform: `${process.platform}-${process.arch}`,
+      });
+      throw new ServiceUnavailableError(
+        'NOMADS',
+        `NOMADS model data is unavailable on this platform (${process.platform}-${process.arch}): ` +
+          'the GRIB decoder could not be loaded. Other forecast sources still work.',
+        cause
+      );
+    });
+  return gribParserPromise;
+}
+
+/** Test hook: forget a cached load result */
+export function resetGribParserForTesting(): void {
+  gribParserPromise = null;
+}
+
 const NOMADS_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_gfs_1p00.pl';
 const NAM_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_nam.pl';
 const HRRR_URL = 'https://nomads.ncep.noaa.gov/cgi-bin/filter_hrrr_2d.pl';
@@ -61,6 +142,15 @@ const NAM_HOURS_PER_STEP = 3;
 const HRRR_HOURS_PER_STEP = 3;
 const MPS_TO_MPH = 2.2369362921;
 const MM_TO_IN = 0.0393701;
+
+/**
+ * Local hours a day's samples must reach for its low and high to count. Lows usually come
+ * around dawn and highs mid-afternoon; with 3-hourly steps a whole day always has a sample
+ * by 6 am and samples on both sides of 1-5 pm.
+ */
+const LOW_NEEDS_SAMPLE_BY_HOUR = 6;
+const HIGH_WINDOW_START_HOUR = 13;
+const HIGH_WINDOW_END_HOUR = 17;
 
 // HRRR's CONUS domain, approximated as a bounding box for a cheap pre-check.
 // The actual grid is a Lambert Conformal Conic projection, not a rectangle,
@@ -182,15 +272,24 @@ export class NOMADSService {
       }
     }
 
-    const run = await this.findLatestAvailableRun(latitude, longitude, model);
+    // Fail fast with a clear error if the decoder can't load; otherwise the run
+    // probe below would swallow each decode failure and report runs unreachable
+    const parseGrib = await loadGribParser();
     const maxForecastHour = Math.min(clampedDays * 24, model.horizonHours);
+    // The last forecast hour this request will download
+    const lastHour = Math.max(model.stepHours, Math.floor(maxForecastHour / model.stepHours) * model.stepHours);
+    const run = await this.findLatestAvailableRun(latitude, longitude, model, parseGrib, lastHour);
     const points: TimeStepData[] = [];
 
     for (let hour = 0; hour <= maxForecastHour; hour += model.stepHours) {
-      const messages = await this.fetchForecastMessages(run.date, run.cycle, hour, latitude, longitude, model);
+      const messages = await this.fetchForecastMessages(run.date, run.cycle, hour, latitude, longitude, model, parseGrib);
       const point = this.extractPointData(messages, latitude, longitude, run.referenceDate, hour);
       points.push(point);
     }
+    const intervals = precipitationFromRunTotals(points.map((point) => point.precipTotalSinceRunIn));
+    points.forEach((point, i) => {
+      point.precipitationIn = intervals[i];
+    });
 
     const timezone = guessTimezoneFromCoords(latitude, longitude);
     const daily = this.aggregateDaily(points, timezone, clampedDays);
@@ -215,7 +314,9 @@ export class NOMADSService {
   private async findLatestAvailableRun(
     latitude: number,
     longitude: number,
-    model: ModelFetchConfig
+    model: ModelFetchConfig,
+    parseGrib: GribParser,
+    probeHour: number
   ): Promise<{ date: string; cycle: string; referenceDate: Date }> {
     const now = DateTime.utc();
     const candidateDates = Array.from({ length: model.candidateLookbackDays + 1 }, (_, idx) =>
@@ -226,10 +327,12 @@ export class NOMADSService {
       const dateStr = candidateDate.toFormat('yyyyLLdd');
 
       for (const cycle of model.availableCycles) {
-        const probeHour = model.stepHours;
-
+        // Probe the LAST hour the request needs, not the first: NOAA posts a run's files over
+        // an hour or two, so a run still being posted has its early hours but not its later
+        // ones. Probing an early hour picked such runs and then failed with "file not found";
+        // probing the last one skips to the previous complete run instead.
         try {
-          const messages = await this.fetchForecastMessages(dateStr, cycle, probeHour, latitude, longitude, model);
+          const messages = await this.fetchForecastMessages(dateStr, cycle, probeHour, latitude, longitude, model, parseGrib);
 
           if (messages.length > 0) {
             const referenceDate = DateTime.fromFormat(`${dateStr}${cycle}`, 'yyyyLLddHH', { zone: 'utc' }).toJSDate();
@@ -253,7 +356,8 @@ export class NOMADSService {
     forecastHour: number,
     latitude: number,
     longitude: number,
-    model: ModelFetchConfig
+    model: ModelFetchConfig,
+    parseGrib: GribParser
   ): Promise<GribMessage[]> {
     const file = model.fileNameBuilder(cycle, forecastHour);
 
@@ -281,7 +385,7 @@ export class NOMADSService {
       throw new DataNotFoundError('NOMADS', `NOMADS data file unavailable for ${file}`);
     }
 
-    return parseMessagesFromBuffer(raw) as unknown as GribMessage[];
+    return parseGrib(raw);
   }
 
   private async requestWithRetry(endpointUrl: string, params: Record<string, string>, retries = 0): Promise<Buffer> {
@@ -335,15 +439,11 @@ export class NOMADSService {
     const humidity = messages.find((m) => m.varAbbrev === 'RH' && m.key.includes('2 in above ground'));
     const ugrd = messages.find((m) => m.varAbbrev === 'UGRD' && m.key.includes('10 in above ground'));
     const vgrd = messages.find((m) => m.varAbbrev === 'VGRD' && m.key.includes('10 in above ground'));
-    const precipCandidates = messages.filter((m) => m.varAbbrev === 'APCP');
+    const runTotalPrecip = findRunTotalPrecipitation(messages, referenceDate);
 
     const timestamp = surfaceTemp?.forecastDate ?? new Date(referenceDate.getTime() + forecastHour * 3600 * 1000);
 
-    const precipitationMmValues = precipCandidates
-      .map((msg) => this.extractNearestValue(msg, latitude, longitude))
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-
-    const intervalPrecipMm = precipitationMmValues.length > 0 ? Math.max(...precipitationMmValues) : 0;
+    const runTotalMm = runTotalPrecip ? this.extractNearestValue(runTotalPrecip, latitude, longitude) : undefined;
 
     const temperatureK = surfaceTemp ? this.extractNearestValue(surfaceTemp, latitude, longitude) : undefined;
     const humidityPct = humidity ? this.extractNearestValue(humidity, latitude, longitude) : undefined;
@@ -360,7 +460,7 @@ export class NOMADSService {
       temperatureF: typeof temperatureK === 'number' ? ((temperatureK - 273.15) * 9) / 5 + 32 : undefined,
       humidityPct,
       windMph,
-      precipitationIn: intervalPrecipMm * MM_TO_IN,
+      precipTotalSinceRunIn: typeof runTotalMm === 'number' ? runTotalMm * MM_TO_IN : undefined,
     };
   }
 
@@ -384,10 +484,14 @@ export class NOMADSService {
       totalSteps: number;
       humidity: number[];
       wind: number[];
+      /** Earliest and latest local hour sampled, to tell a whole day from a partial one */
+      firstHour: number;
+      lastHour: number;
     }>();
 
     for (const point of points) {
-      const dayKey = DateTime.fromJSDate(point.timestamp, { zone: 'utc' }).setZone(timezone).toISODate();
+      const local = DateTime.fromJSDate(point.timestamp, { zone: 'utc' }).setZone(timezone);
+      const dayKey = local.toISODate();
       if (!dayKey) {
         continue;
       }
@@ -402,9 +506,13 @@ export class NOMADSService {
           totalSteps: 0,
           humidity: [],
           wind: [],
+          firstHour: local.hour,
+          lastHour: local.hour,
         };
         buckets.set(dayKey, bucket);
       }
+      bucket.firstHour = Math.min(bucket.firstHour, local.hour);
+      bucket.lastHour = Math.max(bucket.lastHour, local.hour);
 
       if (typeof point.temperatureF === 'number') {
         bucket.highs.push(point.temperatureF);
@@ -412,9 +520,15 @@ export class NOMADSService {
       }
 
       if (typeof point.precipitationIn === 'number') {
-        bucket.precipIn += point.precipitationIn;
-        if (point.precipitationIn >= 0.01) {
-          bucket.precipSteps += 1;
+        // The interval ends at this step, so it belongs to the day it fell in: one ending
+        // exactly at local midnight counts for the day before
+        const precipDayKey = DateTime.fromMillis(point.timestamp.getTime() - 1, { zone: 'utc' }).setZone(timezone).toISODate();
+        const precipBucket = precipDayKey && precipDayKey !== dayKey ? buckets.get(precipDayKey) : bucket;
+        if (precipBucket) {
+          precipBucket.precipIn += point.precipitationIn;
+          if (point.precipitationIn >= 0.01) {
+            precipBucket.precipSteps += 1;
+          }
         }
       }
 
@@ -436,15 +550,25 @@ export class NOMADSService {
       : allSortedDays;
     const sortedDays = (futureDays.length > 0 ? futureDays : allSortedDays).slice(0, days);
 
+    // A run starts and ends partway through a day (an 18Z run starts at 1 pm in Kansas City),
+    // so the first and last days can be missing their night or afternoon. A low that misses
+    // the early morning, or a high that misses the afternoon, would be wrong (a 72 °F "low"
+    // next to other models' 61 °F), so those are left out (NaN) rather than shown.
+    const coversLow = (day: string) => (buckets.get(day)?.firstHour ?? 24) <= LOW_NEEDS_SAMPLE_BY_HOUR;
+    const coversHigh = (day: string) => {
+      const bucket = buckets.get(day);
+      return !!bucket && bucket.firstHour <= HIGH_WINDOW_START_HOUR && bucket.lastHour >= HIGH_WINDOW_END_HOUR;
+    };
+
     return {
       time: sortedDays,
       temperature_2m_max: sortedDays.map((day) => {
         const values = buckets.get(day)?.highs ?? [];
-        return values.length > 0 ? Math.round(Math.max(...values)) : NaN;
+        return values.length > 0 && coversHigh(day) ? Math.round(Math.max(...values)) : NaN;
       }),
       temperature_2m_min: sortedDays.map((day) => {
         const values = buckets.get(day)?.lows ?? [];
-        return values.length > 0 ? Math.round(Math.min(...values)) : NaN;
+        return values.length > 0 && coversLow(day) ? Math.round(Math.min(...values)) : NaN;
       }),
       precipitation_probability_max: sortedDays.map((day) => {
         const bucket = buckets.get(day);
