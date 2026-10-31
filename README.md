@@ -100,13 +100,13 @@ An MCP (Model Context Protocol) server that provides **global weather data** to 
   - Safety assessment for maritime activities (sailing, boating, surfing)
   - Wave interpretation guide based on Douglas Sea Scale
   - Important: Data has limited coastal accuracy - NOT for navigation
-- **Weather Imagery**: Visual weather radar and precipitation maps (NEW in v1.5.0)
-  - Global precipitation radar from RainViewer API
-  - Static radar images showing current precipitation
-  - Animated radar loops (up to 2 hours of history)
-  - Tile URLs for efficient rendering
-  - Automatic coordinate-to-tile calculation
-  - Visual confirmation of approaching weather
+- **Weather Imagery**: Multi-provider US & global radar, historical archive, and NOAA GOES satellite (NEW in v1.5.0, expanded in v1.8)
+  - NOAA/NWS MRMS radar across CONUS, Alaska, Hawaii, Puerto Rico/Caribbean, and Guam (base reflectivity, composite reflectivity, 18 dBZ echo tops, precipitation type)
+  - Historical US NEXRAD radar archive back to `2011-02-16` via Iowa Environmental Mesonet (`at` timestamp parameter)
+  - Global precipitation radar fallback from RainViewer API
+  - NOAA NESDIS GOES-19 (East) & GOES-18 (West) satellite imagery (`type: "satellite"` — GeoColor, visible, infrared, water vapor, shortwave IR across US regional sectors, AK, HI, PR, Guam, and Full Disk)
+  - Radar-estimated point precipitation accumulations (1, 3, 6, 12, 24, 48, 72h in inches and mm via `include_values` / NWS MRMS QPE)
+  - Direct AI visual inspection via `include_image: true` (returns an MCP `image` content block with a self-contained composited basemap + radar + pin PNG or GOES satellite JPEG)
   - Free, no API key required
 - **Lightning Activity**: Real-time lightning strike detection and safety monitoring (NEW in v1.5.0)
   - Real-time strike detection from Blitzortung.org network
@@ -767,36 +767,38 @@ Provides comprehensive marine weather data with intelligent dual-source support:
 - Wave period for planning and safety
 - Optional 5-day forecast with daily summaries
 
-### 9. get_weather_imagery (NEW in v1.5.0)
-Get weather radar and precipitation imagery for visual weather analysis.
+### 9. get_weather_imagery (NEW in v1.5.0, Enhanced with NWS, IEM Archive & QPE)
+Get weather radar, historical radar archives, and radar-estimated precipitation amounts for visual weather analysis.
 
 **Parameters:**
 - `latitude` (required unless `location_name` provided): Latitude coordinate (-90 to 90)
 - `longitude` (required unless `location_name` provided): Longitude coordinate (-180 to 180)
 - `location_name` (optional): Name of a saved location (e.g., "home") to use instead of coordinates
 - `type` (required): Imagery type - "precipitation", "radar", or "satellite" (Note: satellite not yet implemented)
+- `source` (optional): Radar provider - `"auto"` (default: NWS for US & territories, IEM for US historical, RainViewer globally), `"nws"`, `"iem"`, or `"rainviewer"`
+- `product` (optional): Radar product - `"base_reflectivity"` (default), `"composite_reflectivity"`, `"echo_tops"`, or `"precip_type"` (NWS supports all four; IEM and RainViewer provide base reflectivity)
 - `animated` (optional): Return animated loop vs static image (default: false)
-- `layers` (optional): Additional map layers (reserved for future use)
+- `frames` (optional): Number of frames to return (1-24; default: 1, or 6 when animated)
+- `past_minutes` (optional): Animation window in minutes (5-180, default: 60)
+- `at` (optional): ISO-8601 UTC timestamp for historical radar (e.g., `"2025-06-12T22:00:00Z"`), supported back to `2011-02-16` for US locations via IEM
+- `include_values` (optional): Include radar-estimated precipitation totals (1, 3, 6, 12, 24, 48, and 72 hours in inches and mm) from NWS MRMS QPE (default: false, US only)
 
 **Description:**
-Provides access to weather radar and precipitation imagery from RainViewer API with global coverage. Returns tile URLs for efficient rendering of current precipitation or animated radar loops showing up to 2 hours of history. Perfect for visual confirmation of approaching weather systems.
+Provides weather radar imagery with automatic source selection: NOAA/NWS Multi-Radar Multi-Sensor (MRMS) across the United States and its territories (CONUS, Alaska, Hawaii, Puerto Rico/USVI, Guam) at 2-minute intervals, the Iowa Environmental Mesonet (IEM) NEXRAD composite archive back to February 2011 at 5-minute intervals, and RainViewer for global coverage. In the web console, WMS sources zoom down to street level (level 11) and multi-frame results play in an interactive timeline slider.
 
 **Examples:**
 ```
-"Show me the current radar for New York"
-"Get animated precipitation radar for London for the last 2 hours"
-"Is there any precipitation showing on radar near me?"
+"Show me the current radar for Kansas City"
+"Show composite reflectivity radar and rain totals for Seattle"
+"What did the radar look like in Kansas City on 2025-06-12 at 22:00 UTC?"
+"Get animated precipitation radar for London"
 ```
 
 **Returns:**
-- Precipitation radar imagery (static or animated)
-- Tile URLs for efficient rendering
-- Frame timestamps for animated sequences
-- Coverage area and resolution information
-- Automatic coordinate-to-tile calculation
-- Up to 2 hours of historical radar frames when animated
-
-**Note:** Satellite imagery is planned for a future release. Precipitation radar provides global coverage via the free RainViewer API.
+- Radar imagery URLs (WMS `GetMap` in `EPSG:3857` for NWS/IEM, or XYZ tiles for RainViewer)
+- Frame timestamps for static snapshots, animated loops, or historical sequences
+- Provider, product description, coverage region, and attribution (plus a fallback note if an upstream service was unreachable)
+- Optional 1–72 hour radar-estimated precipitation totals (inches and mm) when `include_values: true`
 
 ### 10. get_lightning_activity (NEW in v1.5.0)
 Get real-time lightning strike detection and safety assessment for outdoor activity planning.
@@ -1460,6 +1462,7 @@ To report a security vulnerability, please see our [Security Policy](./SECURITY.
 - [To Do list](./docs/TODO.md) - Open work, in priority order
 - [Roadmap](./docs/planning/ROADMAP.md), [Future Enhancements](./docs/planning/FUTURE_ENHANCEMENTS.md), and [Implementation Plan](./docs/planning/IMPLEMENTATION_PLAN.md)
 - [Docker Deployment Plan](./docs/planning/DOCKER_DEPLOYMENT_PLAN.md) - Design, decisions and test results for the container
+- [Radar Sources Plan](./docs/planning/RADAR_SOURCES_PLAN.md) - Adding NWS, IEM, Environment Canada and DWD radar to `get_weather_imagery`
 - [Climate Normals Plan](./docs/development/CLIMATE_NORMALS_PLAN.md) and [Analytics Plan](./docs/analytics/ANALYTICS_MCP_PLAN.md)
 
 ### Quality reports (dated snapshots)

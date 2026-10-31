@@ -59,6 +59,7 @@ Keep this file honest: when you finish an item, move it to [Done recently](#done
 
 All on the `feat/docker-deployment` branch ([PR #2](https://github.com/dapcook/weather-mcp/pull/2)); details in the [Changelog](../CHANGELOG.md).
 
+- Multi-provider radar (`get_weather_imagery`): NOAA/NWS MRMS across CONUS/AK/HI/PR/Guam, IEM NEXRAD archive back to 2011 (`at`), NWS MRMS QPE 1–72h point precipitation totals (`include_values`), and web console WMS zoom (level 11) + frame playback slider
 - NOMADS (GFS/NAM/HRRR) rain totals fixed: they summed run totals (6.19 in for a day other models put under 0.4 in); partial first/last days no longer show a wrong high or low
 - Model comparison shows one aligned table per day with a Range row
 - `get_forecast` can use one chosen model (`model`: ECMWF, AIFS, ICON, GEM, GFS, NAM, HRRR)

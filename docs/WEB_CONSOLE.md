@@ -27,11 +27,13 @@ You can link straight to a tool or view with a URL hash, for example `http://127
 ## Running tools
 
 1. **Pick a tool** from the sidebar. Tools are grouped into Forecasts, Now & alerts, Environment & hazards, Locations, and System. Type in **Filter tools…** to narrow the list by name.
-2. **Fill in the form.** Each form is built from the tool's MCP input schema, so every parameter the AI sees is here, with its description underneath. Required fields are marked with a red `*`. Fields with a default show it as a placeholder; leave them empty to use the default.
-   - Lists of choices (such as models) are chips you can toggle.
+2. **Fill in the form.** Each form is built from the tool's MCP input schema, so every parameter the AI sees is here. Forms are kept compact so the results get the room:
+   - Coordinate-based tools have a one-line location bar above the form (see [Choosing a location](#choosing-a-location)); the latitude, longitude and location-name fields themselves are folded away behind **Coordinates**.
+   - Field explanations are hidden; hover a field's name to read its explanation, or click **Show help** (next to Run) to show them all. The choice is remembered.
+   - On/off options sit together in one row of chips; lists of choices (such as models) are chips too.
+   - Required fields are marked with a red `*`. Fields with a default show it as a placeholder; leave them empty to use the default.
    - Free-form lists are comma-separated.
-   - Coordinate-based tools have a location helper above the form (see [Choosing a location](#choosing-a-location)).
-3. **Click Run.** The result appears below with an **OK** or **Error** badge and how long the call took. NOMADS and model-comparison tools download model data and can take up to a minute.
+3. **Click Run.** The result appears below with an **OK** or **Error** badge and how long the call took. NOMADS and model-comparison tools download model data and can take up to a minute. After a successful run the form folds into a single line summarizing what you asked for (for example "📍 64029 · 3 days · gfs, ecmwf"), with **Edit** to unfold it and **Run again** to repeat the call. A failed run leaves the form open so you can fix it.
 
 In the result card:
 
@@ -45,7 +47,7 @@ Saving or removing a location with `save_location` or `remove_saved_location` up
 
 ## Choosing a location
 
-Every tool that takes coordinates has a location helper with three options:
+Every tool that takes coordinates has a location bar with three ways to pick a place, followed by the place that will be used (📍) and a **Coordinates** button:
 
 | Option | What it does |
 |---|---|
@@ -53,15 +55,16 @@ Every tool that takes coordinates has a location helper with three options:
 | **Find a place** | Searches OpenStreetMap (Nominatim) by name. Type a city, town, or place, press <kbd>Enter</kbd> or **Search**, and click a result to fill in its coordinates. |
 | **Use my location** | Asks the browser for your current position. |
 
-You can also type coordinates into the latitude and longitude fields yourself. The `location_name` and `alias` fields autocomplete from your saved locations.
+To type coordinates or a saved name yourself, click **Coordinates** to unfold the latitude, longitude and location-name fields; the 📍 readout follows what you type. The `location_name` and `alias` fields autocomplete from your saved locations.
 
 ## Radar maps
 
-`get_weather_imagery` returns RainViewer radar tiles, which on their own are just colored precipitation with no geography. The console draws them over an Esri basemap with state lines and coastlines, with highways and place names layered on top, and a red pin at the requested location.
+`get_weather_imagery` returns radar overlays from NOAA/NWS Multi-Radar Multi-Sensor (MRMS) across the United States and its territories, the Iowa Environmental Mesonet (IEM) NEXRAD archive back to 2011-02-16, or RainViewer globally. Because radar images on their own are bare precipitation layers with no geography, the console draws them over an Esri basemap with state lines and coastlines, with highways and place names layered on top, and a red pin at the requested location.
 
 - Drag to pan.
-- **+** / **−** zoom between levels 3 and 7 (RainViewer's free tiles stop at 7).
+- **+** / **−** zoom between levels 3 and 11 (street/neighborhood level) for NWS and IEM WMS radar, or levels 3 and 7 for RainViewer (where free tiles stop at 7).
 - Double-click to re-center on the pin.
+- When multiple frames are returned (`animated: true` or `frames > 1`), all frames are consolidated into one map with a **▶ Play / ⏸ Pause** button, timeline slider, and UTC frame timestamp readout.
 
 ## Climate explorer
 
@@ -69,7 +72,7 @@ Open **Climate explorer** under **Explorers** at the top of the sidebar (or go t
 
 ### Loading a place
 
-The controls sit in one panel. Use the location helper at the top (saved location, place search, or your location), or type a latitude and longitude below it and click **Load**. Picking a place loads it straight away, and fills in its coordinates to four decimal places (about 11 m).
+The controls share one row: the location bar (saved location, place search, or your location), the normals baseline, and **Load**. Picking a place loads it straight away, and fills in its coordinates to four decimal places (about 11 m). To type a latitude and longitude, click **Coordinates**, enter them, and click **Load**.
 
 The first load for a place takes a few seconds: it downloads every day since 1940 (about 31,000 days) in one request. After that, changing years, months, zoom, and units is instant, because nothing more is downloaded. The console remembers the last place you loaded.
 

@@ -22,6 +22,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 ### 📁 Planning (`planning/`)
 - **[IMPLEMENTATION_PLAN.md](./planning/IMPLEMENTATION_PLAN.md)** - Project implementation roadmap
 - **[DOCKER_DEPLOYMENT_PLAN.md](./planning/DOCKER_DEPLOYMENT_PLAN.md)** - Docker/Raspberry Pi deployment design, decisions, and test results
+- **[RADAR_SOURCES_PLAN.md](./planning/RADAR_SOURCES_PLAN.md)** - Plan for more radar sources in `get_weather_imagery` (NWS, IEM, Environment Canada, DWD), with verified service facts
 - **[ROADMAP.md](./planning/ROADMAP.md)** - Project roadmap and future plans
 - **[FUTURE_ENHANCEMENTS.md](./planning/FUTURE_ENHANCEMENTS.md)** - Planned enhancements and features
 
@@ -119,6 +120,7 @@ This directory contains comprehensive documentation for the Weather MCP Server p
 ### 📋 Planning & Roadmap
 - [To Do list](./TODO.md)
 - [Docker Deployment Plan](./planning/DOCKER_DEPLOYMENT_PLAN.md)
+- [Radar Sources Plan](./planning/RADAR_SOURCES_PLAN.md)
 - [Implementation Plan](./planning/IMPLEMENTATION_PLAN.md)
 - [Roadmap](./planning/ROADMAP.md)
 - [Future Enhancements](./planning/FUTURE_ENHANCEMENTS.md)

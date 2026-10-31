@@ -127,24 +127,41 @@
     padding: 18px 20px;
   }
   .card + .card { margin-top: 16px; }
+  .tool-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
   .tool-head h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
   .tool-head code { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .tool-head .run-summary, .tool-head .collapsed-actions { display: none; }
+  /* After a run the form folds into one line, leaving the room to the results */
+  #tool-card.collapsed { padding: 10px 16px; }
+  #tool-card.collapsed .tool-head { align-items: center; }
+  #tool-card.collapsed .tool-head h2 { font-size: 16px; }
+  #tool-card.collapsed .tool-head code { display: none; }
+  #tool-card.collapsed .tool-head .run-summary {
+    display: block; flex: 1; min-width: 0; color: var(--muted); font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #tool-card.collapsed .tool-head .collapsed-actions { display: inline-flex; gap: 6px; }
+  #tool-card.collapsed .tool-desc, #tool-card.collapsed > .loc, #tool-card.collapsed > form { display: none; }
   .tool-desc { color: var(--muted); margin: 8px 0 0; }
   .tool-desc details summary { cursor: pointer; color: var(--accent); font-size: 13px; }
 
   /* ---------- location helper ---------- */
+  /* One row: saved place, search, my location, what is picked, and the folded coordinates */
   .loc {
-    margin-top: 16px;
-    padding: 12px;
+    margin-top: 12px;
+    padding: 8px 10px;
     background: var(--panel-2);
     border-radius: 8px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    display: flex; flex-wrap: wrap; align-items: center;
     gap: 8px;
-    align-items: end;
   }
-  @media (max-width: 640px) { .loc { grid-template-columns: minmax(0, 1fr); } }
-  .loc label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .loc > select { width: auto; min-width: 140px; max-width: 220px; flex: 0 1 auto; }
+  .loc .search-row { flex: 1 1 170px; }
+  .loc-now { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  .loc-now.none { color: var(--muted); font-weight: 400; }
+  /* Wide screens keep the bar on one line; the search box gives up width first */
+  @media (min-width: 980px) { .loc { flex-wrap: nowrap; } .loc .search-row { min-width: 120px; } .loc > .btn { flex-shrink: 0; } }
+  @media (max-width: 640px) { .loc > select { max-width: none; flex: 1 1 100%; } .loc-now { max-width: none; flex: 1 1 100%; order: 5; } }
   .search-row { display: flex; gap: 6px; position: relative; }
   .search-row input { flex: 1; min-width: 0; }
   .results {
@@ -163,15 +180,27 @@
 
   /* ---------- form ---------- */
   form.fields {
-    margin-top: 16px;
+    margin-top: 12px;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 14px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px 12px;
   }
   .field.wide { grid-column: 1 / -1; }
-  .field label.name { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .field label.name { display: block; font-weight: 600; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
   .field .req { color: var(--err); margin-left: 2px; }
   .field .help { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  /* Field explanations stay out of the way (they are also each label's tooltip) until "Show help" */
+  form.fields:not(.show-help) .help { display: none; }
+  .coords {
+    grid-column: 1 / -1;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 12px;
+    padding: 10px; border: 1px dashed var(--border); border-radius: 8px;
+  }
+  .coords[hidden] { display: none; }
+  .toggles { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .actions .spacer { flex: 1; }
+  .btn.subtle { border-color: transparent; background: none; color: var(--accent); padding: 7px 8px; }
+  .btn.subtle:hover { background: var(--accent-soft); }
   input[type=text], input[type=number], input[type=date], input[type=search], select, textarea {
     width: 100%;
     padding: 7px 9px;
@@ -318,6 +347,33 @@
   .radar-map .map-label { top: 10px; left: 10px; font-weight: 600; }
   .radar-map .attribution { bottom: 6px; right: 6px; color: var(--muted); }
   .radar-map .attribution a { color: inherit; }
+  .radar-wrap { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--panel-2); }
+  .radar-wrap .radar-map { margin: 0; border: 0; border-radius: 0; }
+  .radar-player {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .radar-player .play-btn {
+    min-width: 68px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--panel-2); color: var(--text); font-weight: 600; cursor: pointer;
+  }
+  .radar-player .play-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .radar-player input[type="range"] {
+    flex: 1; min-width: 100px; margin: 0; cursor: pointer;
+    accent-color: var(--accent);
+  }
+  .radar-player input[type="range"]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px;
+  }
+  .radar-player .frame-readout {
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
   /* ---------- climate explorer ---------- */
   :root {
     --hi: #cf3b30; --lo: #3656c9; --bar: #7d858f; --precip: #2f86d6; --freeze: #9aa3ad; --sel: #1f6feb;
@@ -325,17 +381,22 @@
   @media (prefers-color-scheme: dark) {
     :root { --hi: #ff7b72; --lo: #7ea6ff; --bar: #9aa3ad; --precip: #58a6ff; --freeze: #5d6673; --sel: #4c8dff; }
   }
-  /* One panel for choosing the place and settings (the location helper and the coordinate row share it) */
-  .cx-controls { margin-top: 16px; padding: 14px; background: var(--panel-2); border-radius: 10px; display: grid; gap: 12px; }
-  .cx-controls .loc { margin: 0; padding: 0; background: none; border-radius: 0; gap: 8px; }
-  .cx-controls .loc label, .cx-controls .field label.name {
+  /* One row for choosing the place, the normals baseline and Load; coordinates fold out below */
+  .cx-controls { margin-top: 12px; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .cx-controls .loc { margin: 0; padding: 0; background: none; border-radius: 0; gap: 8px; flex: 1 1 520px; }
+  .cx-controls .field label.name {
     display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted);
   }
-  .cx-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 8px; align-items: end; }
-  .cx-form .cx-load .btn { min-width: 96px; justify-content: center; }
+  /* The baseline options name themselves ("1991–2020 (current normals)"); the label stays for screen readers */
+  .cx-controls .cx-baseline label.name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cx-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 0 1 auto; }
+  .cx-form .cx-baseline select { width: auto; max-width: 260px; }
+  .cx-form:has(.coords:not([hidden])) { flex-basis: 100%; }
+  .cx-form .coords { order: 3; flex-basis: 100%; padding: 8px; }
+  .cx-form .cx-load .btn { min-width: 80px; justify-content: center; }
   @media (max-width: 760px) {
-    .cx-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .cx-form .cx-baseline, .cx-form .cx-load { grid-column: 1 / -1; }
+    .cx-form, .cx-form .cx-baseline { flex: 1 1 100%; }
+    .cx-form .cx-baseline select { max-width: none; width: 100%; }
     .cx-form .cx-load .btn { width: 100%; }
   }
   /* Place heading: name, then facts about the place, then facts about the data */
@@ -658,7 +719,7 @@
         break;
       case 'enum':
         control = el('select', { id, name: key },
-          el('option', { value: '', text: hasDefault ? `Default (${schema.default})` : '—' }),
+          el('option', { value: '', text: hasDefault ? `Default (${schema.default})` : required ? 'Choose…' : 'Default' }),
           schema.enum.map((v) => el('option', { value: v, text: v })));
         if (savedValue !== undefined) control.value = savedValue;
         break;
@@ -667,10 +728,10 @@
         if (savedValue !== undefined) control.value = savedValue;
         break;
       case 'boolean': {
+        // A compact on/off chip; its explanation is the tooltip (and the help text when shown)
         const box = el('input', { id, name: key, type: 'checkbox' });
         box.checked = savedValue !== undefined ? savedValue === true : schema.default === true;
-        control = el('label', { class: 'switch' }, box, el('span', { text: hasDefault ? `Default: ${schema.default ? 'on' : 'off'}` : 'Enable' }));
-        break;
+        return el('label', { class: 'field chip toggle', 'data-key': key, 'data-kind': kind, title: schema.description || '' }, box, humanize(key));
       }
       case 'multi':
         control = el('div', { class: 'chips', id, role: 'group' },
@@ -695,9 +756,9 @@
       }
     }
 
-    const wide = kind === 'multi' || kind === 'json' || (schema.description || '').length > 140;
+    const wide = kind === 'multi' || kind === 'json';
     return el('div', { class: `field${wide ? ' wide' : ''}`, 'data-key': key, 'data-kind': kind },
-      el('label', { class: 'name', for: kind === 'multi' ? null : id }, humanize(key), required ? el('span', { class: 'req', text: '*', title: 'Required' }) : null),
+      el('label', { class: 'name', for: kind === 'multi' ? null : id, title: schema.description || '' }, humanize(key), required ? el('span', { class: 'req', text: '*', title: 'Required' }) : null),
       control,
       schema.description ? el('div', { class: 'help', text: schema.description }) : null);
   }
@@ -752,17 +813,19 @@
   function setFieldValue(key, value) {
     const input = document.querySelector(`#tool-card .field[data-key="${key}"] input`);
     if (input) input.value = value;
+    updateLocationSummary();
   }
 
   function buildLocationHelper(props, onPick) {
     const supportsName = 'location_name' in props;
     const savedSelect = el('select', { 'aria-label': 'Saved location' },
-      el('option', { value: '', text: savedLocations.length ? 'Choose…' : 'None saved yet' }),
-      savedLocations.map((loc) => el('option', { value: loc.alias, text: `${loc.alias} — ${loc.name}` })));
+      el('option', { value: '', text: savedLocations.length ? 'Saved location…' : 'No saved locations' }),
+      savedLocations.map((loc) => el('option', { value: loc.alias, text: loc.name && loc.name !== loc.alias ? `${loc.alias} — ${loc.name}` : loc.alias })));
     savedSelect.disabled = !savedLocations.length;
     savedSelect.addEventListener('change', () => {
       const loc = savedLocations.find((l) => l.alias === savedSelect.value);
       if (!loc) return;
+      pickedPlace = null;
       if (onPick) onPick({ label: loc.name && loc.name !== loc.alias ? `${loc.alias} — ${loc.name}` : loc.alias, latitude: loc.latitude, longitude: loc.longitude });
       if (supportsName) {
         setFieldValue('location_name', loc.alias);
@@ -770,12 +833,13 @@
         setFieldValue('longitude', '');
       } else {
         // ~11 m is plenty; the stored values can run to 7 decimals
-        setFieldValue('latitude', Number(Number(loc.latitude).toFixed(4)));
-        setFieldValue('longitude', Number(Number(loc.longitude).toFixed(4)));
+        pickedPlace = { label: loc.alias, latitude: Number(Number(loc.latitude).toFixed(4)), longitude: Number(Number(loc.longitude).toFixed(4)) };
+        setFieldValue('latitude', pickedPlace.latitude);
+        setFieldValue('longitude', pickedPlace.longitude);
       }
     });
 
-    const query = el('input', { type: 'text', placeholder: 'City, town, or place', 'aria-label': 'Search for a place' });
+    const query = el('input', { type: 'text', placeholder: 'Find a place…', 'aria-label': 'Search for a place' });
     const results = el('div', { class: 'results', hidden: true });
     const searchBtn = el('button', { class: 'btn', type: 'button', text: 'Search' });
     const doSearch = async () => {
@@ -798,6 +862,8 @@
               if (supportsName) setFieldValue('location_name', '');
               savedSelect.value = '';
               query.value = r.name + (where ? `, ${where}` : '');
+              pickedPlace = { label: query.value, latitude: Number(r.latitude.toFixed(4)), longitude: Number(r.longitude.toFixed(4)) };
+              updateLocationSummary();
               results.hidden = true;
               if (onPick) onPick({ label: query.value, latitude: r.latitude, longitude: r.longitude });
             },
@@ -829,6 +895,8 @@
         if (supportsName) setFieldValue('location_name', '');
         savedSelect.value = '';
         geoBtn.disabled = false;
+        pickedPlace = { label: 'My location', latitude: Number(pos.coords.latitude.toFixed(4)), longitude: Number(pos.coords.longitude.toFixed(4)) };
+        updateLocationSummary();
         if (onPick) onPick({ label: 'My location', latitude: pos.coords.latitude, longitude: pos.coords.longitude });
       }, (err) => {
         geoBtn.disabled = false;
@@ -836,10 +904,46 @@
       }, { timeout: 10000 });
     });
 
+    // One row: pick a place three ways; the raw coordinate fields stay folded away until asked for
+    const coordsBtn = el('button', {
+      class: 'btn subtle', type: 'button', text: 'Coordinates', 'aria-expanded': 'false',
+      onclick: () => {
+        const coords = $('#tool-card .coords');
+        if (!coords) return;
+        coords.hidden = !coords.hidden;
+        coordsBtn.setAttribute('aria-expanded', String(!coords.hidden));
+        if (!coords.hidden) coords.querySelector('input')?.focus();
+      },
+    });
     return el('div', { class: 'loc' },
-      el('div', {}, el('label', { text: 'Saved location' }), savedSelect),
-      el('div', {}, el('label', { text: 'Find a place' }), el('div', { class: 'search-row' }, query, searchBtn, results)),
-      el('div', {}, geoBtn));
+      savedSelect,
+      el('div', { class: 'search-row' }, query, searchBtn, results),
+      geoBtn,
+      el('span', { class: 'loc-now', 'aria-live': 'polite' }),
+      coordsBtn);
+  }
+
+  /** Remembers the name of a searched or located place, so the summary can show it */
+  let pickedPlace = null;
+
+  /** The location the form will send, in words: a saved name, a found place, or coordinates */
+  function describeLocation() {
+    const value = (key) => document.querySelector(`#tool-card .field[data-key="${key}"] input`)?.value.trim() ?? '';
+    const name = value('location_name');
+    if (name) return name;
+    const lat = value('latitude');
+    const lon = value('longitude');
+    if (lat === '' || lon === '') return '';
+    if (pickedPlace && Number(lat) === pickedPlace.latitude && Number(lon) === pickedPlace.longitude) return pickedPlace.label;
+    return `${Number(lat).toFixed(2)}, ${Number(lon).toFixed(2)}`;
+  }
+
+  function updateLocationSummary() {
+    const out = $('#tool-card .loc-now');
+    if (!out) return;
+    const where = describeLocation();
+    out.textContent = where ? `📍 ${where}` : 'No location chosen';
+    out.classList.toggle('none', !where);
   }
 
   function selectTool(name) {
@@ -861,17 +965,40 @@
     const saved = store.get(`weather-console:args:${name}`);
     const [lead, rest] = splitDescription(current.description);
 
+    // Coordinates live in the location bar's folded "Coordinates" group; on/off options share one row
+    const hasLocation = 'latitude' in props && 'longitude' in props;
+    const isLocationKey = (key) => hasLocation && LOCATION_KEYS.includes(key);
+    const entries = Object.entries(props);
+    const fieldFor = ([key, schema]) => buildField(key, schema, required.has(key), saved);
+    const toggles = entries.filter(([key, schema]) => !isLocationKey(key) && fieldKind(key, schema) === 'boolean');
+    const others = entries.filter(([key, schema]) => !isLocationKey(key) && fieldKind(key, schema) !== 'boolean');
+    const showHelp = store.get('weather-console:show-help') === true;
+    const helpBtn = el('button', {
+      class: 'btn subtle', type: 'button', text: showHelp ? 'Hide help' : 'Show help',
+      onclick: () => {
+        const on = !form.classList.contains('show-help');
+        form.classList.toggle('show-help', on);
+        helpBtn.textContent = on ? 'Hide help' : 'Show help';
+        store.set('weather-console:show-help', on);
+      },
+    });
+
     const runBtn = el('button', { class: 'btn primary', type: 'submit' }, el('span', { text: 'Run' }));
-    const form = el('form', { class: 'fields', novalidate: true },
-      Object.entries(props).map(([key, schema]) => buildField(key, schema, required.has(key), saved)),
+    const form = el('form', { class: `fields${showHelp ? ' show-help' : ''}`, novalidate: true },
+      hasLocation ? el('div', { class: 'coords', hidden: true }, entries.filter(([key]) => isLocationKey(key)).map(fieldFor)) : null,
+      others.map(fieldFor),
+      toggles.length ? el('div', { class: 'toggles', role: 'group', 'aria-label': 'Options' }, toggles.map(fieldFor)) : null,
       el('div', { class: 'actions' },
         runBtn,
         el('button', {
           class: 'btn', type: 'button', text: 'Clear',
-          onclick: () => { store.set(`weather-console:args:${name}`, null); selectTool(name); },
+          onclick: () => { store.set(`weather-console:args:${name}`, null); pickedPlace = null; selectTool(name); },
         }),
         SLOW_TOOLS.has(name) ? el('span', { class: 'hint', text: 'Model-run data downloads can take up to a minute.' }) : null,
-        !Object.keys(props).length ? el('span', { class: 'hint', text: 'This tool takes no parameters.' }) : null));
+        !Object.keys(props).length ? el('span', { class: 'hint', text: 'This tool takes no parameters.' }) : null,
+        entries.some(([, schema]) => schema.description) ? el('span', { class: 'spacer' }) : null,
+        entries.some(([, schema]) => schema.description) ? helpBtn : null));
+    form.addEventListener('input', updateLocationSummary);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -885,28 +1012,66 @@
       store.set(`weather-console:args:${name}`, args);
       runBtn.disabled = true;
       runBtn.replaceChildren(el('span', { class: 'spinner' }), el('span', { text: 'Running…' }));
+      let ok = false;
       try {
-        await runTool(current, args);
+        ok = await runTool(current, args);
       } finally {
         runBtn.disabled = false;
         runBtn.replaceChildren(el('span', { text: 'Run' }));
       }
+      // Fold the form into a one-line summary so the results get the room; errors keep it open
+      if (ok && Object.keys(props).length) {
+        summary.textContent = summarizeArgs(args, props);
+        card.classList.add('collapsed');
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        $('#result-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     });
 
+    const summary = el('span', { class: 'run-summary' });
     const card = $('#tool-card');
+    card.classList.remove('collapsed');
     card.replaceChildren(
-      el('div', { class: 'tool-head' }, el('h2', { text: titleFor(current) }), el('code', { text: current.name })),
+      el('div', { class: 'tool-head' },
+        el('h2', { text: titleFor(current) }),
+        el('code', { text: current.name }),
+        summary,
+        el('span', { class: 'collapsed-actions' },
+          el('button', { class: 'btn small', type: 'button', text: 'Edit', onclick: () => card.classList.remove('collapsed') }),
+          el('button', { class: 'btn small', type: 'button', text: 'Run again', onclick: () => form.requestSubmit() }))),
       el('div', { class: 'tool-desc' },
         lead,
         rest ? el('details', {}, el('summary', { text: 'More' }), el('p', { text: rest })) : null),
-      'latitude' in props && 'longitude' in props ? buildLocationHelper(props) : null,
+      hasLocation ? buildLocationHelper(props) : null,
       form);
+    updateLocationSummary();
+  }
+
+  const LOCATION_KEYS = ['latitude', 'longitude', 'location_name'];
+
+  /** One line describing a run's inputs, shown while the form is folded */
+  function summarizeArgs(args, props) {
+    const parts = [];
+    const where = describeLocation();
+    if (where && LOCATION_KEYS.some((key) => key in args)) parts.push(`📍 ${where}`);
+    for (const [key, value] of Object.entries(args)) {
+      if (LOCATION_KEYS.includes(key) && 'latitude' in props) continue;
+      if (value === true) parts.push(humanize(key));
+      else if (value === false) parts.push(`no ${humanize(key).toLowerCase()}`);
+      else if (key === 'days') parts.push(`${value} day${value === 1 ? '' : 's'}`);
+      else if (Array.isArray(value)) parts.push(value.join(', '));
+      else parts.push(`${humanize(key)}: ${value}`);
+    }
+    return parts.join(' · ') || 'Defaults';
   }
 
   // ---------------------------------------------------------------------
   // Running tools and showing results
   // ---------------------------------------------------------------------
+  /** Runs a tool and shows its result; true if it succeeded */
   async function runTool(tool, args) {
+    let ok = false;
     const card = $('#result-card');
     card.hidden = false;
     $('#result-title').textContent = titleFor(tool);
@@ -921,21 +1086,27 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: tool.name, arguments: args }),
       });
-      const text = (result.content || [])
+      const parts = result.content || [];
+      const text = parts
+        .filter((part) => part.type !== 'image')
         .map((part) => part.type === 'text' ? part.text : `*(${part.type} content not shown)*`)
         .join('\n\n');
       lastMarkdown = text;
       lastArgs = args;
+      lastImages = parts.filter((part) => part.type === 'image' && part.data && part.mimeType);
       $('#result-badge').textContent = result.isError ? 'Error' : 'OK';
       $('#result-badge').className = result.isError ? 'badge err' : 'badge';
       $('#result-meta').textContent = `${(result.elapsedMs / 1000).toFixed(1)}s`;
       renderResult();
       if (LOCATION_STORE_TOOLS.has(tool.name) && !result.isError) await refreshSavedLocations();
+      ok = !result.isError;
     } catch (error) {
       showError(titleFor(tool), error.message);
     }
-    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return ok;
   }
+
+  let lastImages = [];
 
   function showError(title, message) {
     $('#result-card').hidden = false;
@@ -944,6 +1115,7 @@
     $('#result-badge').className = 'badge err';
     $('#result-meta').textContent = '';
     lastMarkdown = message;
+    lastImages = [];
     $('#result-body').replaceChildren(el('div', { class: 'error-box', text: message }));
   }
 
@@ -956,6 +1128,18 @@
       const div = el('div', { class: 'md' });
       div.innerHTML = renderMarkdown(lastMarkdown);
       enhanceRadarImages(div, lastArgs);
+      enhanceSatelliteImages(div);
+      for (const imgPart of lastImages) {
+        div.append(
+          el('details', { style: 'margin-top:0.75rem' },
+            el('summary', { style: 'cursor:pointer;font-size:0.82rem;color:var(--muted)', text: `Attached MCP vision image (${imgPart.mimeType})` }),
+            el('img', {
+              src: `data:${imgPart.mimeType};base64,${imgPart.data}`,
+              alt: 'Attached MCP vision image',
+              style: 'max-width:100%;border-radius:8px;margin-top:0.5rem;border:1px solid var(--border)',
+            }))
+        );
+      }
       body.replaceChildren(div);
     }
   }
@@ -990,14 +1174,17 @@
   });
 
   // ---------------------------------------------------------------------
-  // Radar map: RainViewer tiles are bare precipitation overlays with no
-  // geography, so draw them over a basemap with a pin at the location
+  // Radar map: RainViewer tiles and WMS GetMap overlays (NWS GeoServer, IEM)
+  // are bare precipitation layers with no geography, so draw them over an
+  // Esri gray canvas basemap with a pin at the location and a frame slider.
   // ---------------------------------------------------------------------
   const RAINVIEWER_TILE = /^(https:\/\/tilecache\.rainviewer\.com\/v2\/radar\/[^/]+)\/\d+\/(\d+)\/\d+\/\d+\/(.+)$/;
   const TILE_PX = 256;
   const MIN_ZOOM = 3;
-  const MAX_ZOOM = 7; // RainViewer's free tiles return "Zoom Level Not Supported" above 7
+  const RAINVIEWER_MAX_ZOOM = 7; // RainViewer's free tiles stop at zoom 7
+  const WMS_MAX_ZOOM = 11;       // WMS sources render dynamically to street/neighbourhood level
   const MAX_LAT = 85.05112878;
+  const ORIGIN_SHIFT_M = Math.PI * 6378137; // 20037508.342789244 (EPSG:3857 half-circumference)
 
   function worldPixel(lat, lon, zoom) {
     const scale = TILE_PX * 2 ** zoom;
@@ -1008,6 +1195,103 @@
     };
   }
 
+  /**
+   * Convert slippy-map XYZ tile coordinates to an EPSG:3857 bounding box [minX, minY, maxX, maxY] in metres.
+   * Mirrors `tileToMercatorBBox` in `src/utils/radarCoverage.ts`.
+   */
+  function tileToMercatorBBox(z, x, y) {
+    const n = 2 ** z;
+    const tileSizeM = (2 * ORIGIN_SHIFT_M) / n;
+    const minX = -ORIGIN_SHIFT_M + x * tileSizeM;
+    const maxX = minX + tileSizeM;
+    const maxY = ORIGIN_SHIFT_M - y * tileSizeM;
+    const minY = maxY - tileSizeM;
+    return [
+      Math.round(minX * 100) / 100,
+      Math.round(minY * 100) / 100,
+      Math.round(maxX * 100) / 100,
+      Math.round(maxY * 100) / 100,
+    ];
+  }
+
+  /**
+   * Recognize a radar frame URL (RainViewer tile or NWS/IEM WMS GetMap) and return
+   * a descriptor that can build per-tile URLs at any zoom level.
+   */
+  function parseRadarFrameUrl(src, fallbackLabel) {
+    if (!src) return null;
+    const decoded = src.replace(/&amp;/g, '&');
+
+    // 1. RainViewer tile URL
+    const rvMatch = decoded.match(RAINVIEWER_TILE);
+    if (rvMatch) {
+      const [, radarBase, zoom, radarSuffix] = rvMatch;
+      const unixMatch = radarBase.match(/\/(\d{9,11})$/);
+      const timeIso = unixMatch ? new Date(Number(unixMatch[1]) * 1000).toISOString() : '';
+      return {
+        providerLabel: 'RainViewer',
+        providerHref: 'https://www.rainviewer.com',
+        maxZoom: RAINVIEWER_MAX_ZOOM,
+        defaultZoom: Number(zoom) || 6,
+        timeIso,
+        label: fallbackLabel || (timeIso ? `RainViewer radar at ${timeIso}` : 'RainViewer radar'),
+        buildTileUrl(z, wx, ty) {
+          return `${radarBase}/512/${z}/${wx}/${ty}/${radarSuffix}`;
+        },
+      };
+    }
+
+    // 2. WMS GetMap URL (NOAA/NWS GeoServer, IEM NEXRAD archive, or local test WMS)
+    try {
+      const parsed = new URL(decoded, window.location.origin);
+      const getParam = (name) => {
+        for (const [k, v] of parsed.searchParams.entries()) {
+          if (k.toUpperCase() === name) return v;
+        }
+        return null;
+      };
+      if ((getParam('SERVICE') || '').toUpperCase() !== 'WMS') return null;
+      if ((getParam('REQUEST') || '').toUpperCase() !== 'GETMAP') return null;
+      const layers = getParam('LAYERS');
+      if (!layers) return null;
+
+      const version = getParam('VERSION') || '1.3.0';
+      const timeIso = getParam('TIME') || '';
+      const endpoint = `${parsed.origin}${parsed.pathname}`;
+      const crsKey = version === '1.3.0' ? 'CRS' : 'SRS';
+
+      let providerLabel = 'WMS Radar';
+      let providerHref = endpoint;
+      if (parsed.hostname.includes('noaa.gov') || parsed.hostname.includes('weather.gov')) {
+        providerLabel = 'NOAA/NWS MRMS';
+        providerHref = 'https://opengeo.ncep.noaa.gov/geoserver/';
+      } else if (parsed.hostname.includes('iastate.edu')) {
+        providerLabel = 'IEM NEXRAD';
+        providerHref = 'https://mesonet.agron.iastate.edu/ogc/';
+      }
+
+      return {
+        providerLabel,
+        providerHref,
+        maxZoom: WMS_MAX_ZOOM,
+        defaultZoom: 7,
+        timeIso,
+        label: fallbackLabel || (timeIso ? `${providerLabel} (${layers}) at ${timeIso}` : `${providerLabel} (${layers})`),
+        buildTileUrl(z, wx, ty) {
+          const [minX, minY, maxX, maxY] = tileToMercatorBBox(z, wx, ty);
+          return (
+            `${endpoint}?SERVICE=WMS&VERSION=${encodeURIComponent(version)}&REQUEST=GetMap` +
+            `&LAYERS=${encodeURIComponent(layers)}&STYLES=&FORMAT=image%2Fpng&TRANSPARENT=TRUE` +
+            `&${crsKey}=EPSG%3A3857&BBOX=${minX},${minY},${maxX},${maxY}&WIDTH=256&HEIGHT=256` +
+            (timeIso ? `&TIME=${encodeURIComponent(timeIso)}` : '')
+          );
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
   function tileImg(src, left, top, cls) {
     const img = el('img', { src, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', class: cls, draggable: 'false' });
     img.style.left = `${left}px`;
@@ -1016,27 +1300,60 @@
     return img;
   }
 
-  function buildRadarMap({ radarBase, radarSuffix, zoom, lat, lon, label }) {
+  function formatRadarTimeShort(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC').replace(/Z$/, ' UTC');
+  }
+
+  let radarSliderSeq = 0;
+
+  function buildRadarMap({ frames, lat, lon }) {
+    const activeFrames = frames && frames.length ? frames : [];
+    let frameIndex = activeFrames.length - 1;
+    const firstFrame = activeFrames[frameIndex];
+    const maxZoom = firstFrame ? firstFrame.maxZoom : RAINVIEWER_MAX_ZOOM;
+    const initialZoom = firstFrame ? firstFrame.defaultZoom : 6;
+
     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     // Esri's gray canvas basemaps are built for overlays and need no API key.
     // Base (land, water, borders) goes under the radar; highways and labels go
     // on top so they stay readable through heavy precipitation.
     const canvas = `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${dark ? 'Dark' : 'Light'}_Gray`;
-    const tiles = el('div', { class: 'tiles' });
+    const baseLayer = el('div', { class: 'tiles' });
+    const radarLayer = el('div', { class: 'tiles' });
+    const overlayLayer = el('div', { class: 'tiles' });
+    const tiles = el('div', { class: 'tiles' }, baseLayer, radarLayer, overlayLayer);
+
     const pin = el('div', { class: 'pin', title: `${lat.toFixed(4)}, ${lon.toFixed(4)}` });
     const zoomIn = el('button', { type: 'button', 'aria-label': 'Zoom in', text: '+' });
     const zoomOut = el('button', { type: 'button', 'aria-label': 'Zoom out', text: '−' });
+    const mapLabel = el('div', { class: 'map-label', text: firstFrame?.label || 'Radar' });
+
     const map = el('div', { class: 'radar-map', role: 'img', 'aria-label': `Radar map centered on ${lat.toFixed(3)}, ${lon.toFixed(3)}` },
       tiles, pin,
       el('div', { class: 'zoom' }, zoomIn, zoomOut),
-      label ? el('div', { class: 'map-label', text: label }) : null,
+      mapLabel,
       el('div', { class: 'attribution' },
         'Basemap © ', el('a', { href: 'https://www.esri.com', target: '_blank', rel: 'noopener noreferrer', text: 'Esri' }),
         ', HERE, Garmin, © ', el('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener noreferrer', text: 'OpenStreetMap' }),
-        ' · Radar ', el('a', { href: 'https://www.rainviewer.com', target: '_blank', rel: 'noopener noreferrer', text: 'RainViewer' })));
+        ' · Radar ', el('a', { href: firstFrame?.providerHref || 'https://www.rainviewer.com', target: '_blank', rel: 'noopener noreferrer', text: firstFrame?.providerLabel || 'Radar' })));
 
-    let z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
+    let z = Math.max(MIN_ZOOM, Math.min(maxZoom, initialZoom));
     let center = worldPixel(lat, lon, z);
+    let visibleCoords = [];
+
+    function drawRadarTilesOnly() {
+      const current = activeFrames[frameIndex];
+      if (!current) return;
+      const radarNodes = [];
+      for (const { wx, ty, px, py } of visibleCoords) {
+        radarNodes.push(tileImg(current.buildTileUrl(z, wx, ty), px, py, 'radar'));
+      }
+      radarLayer.replaceChildren(...radarNodes);
+      mapLabel.textContent = current.label;
+    }
 
     function draw() {
       const width = map.clientWidth || 640;
@@ -1044,30 +1361,36 @@
       const left = center.x - width / 2;
       const top = center.y - height / 2;
       const count = 2 ** z;
-      const nodes = [];
+      const baseNodes = [];
+      const overlayNodes = [];
+      visibleCoords = [];
+
       for (let ty = Math.floor(top / TILE_PX); ty <= Math.floor((top + height) / TILE_PX); ty++) {
         if (ty < 0 || ty >= count) continue;
         for (let tx = Math.floor(left / TILE_PX); tx <= Math.floor((left + width) / TILE_PX); tx++) {
           const wx = ((tx % count) + count) % count; // wrap around the antimeridian
           const px = tx * TILE_PX - left;
           const py = ty * TILE_PX - top;
-          nodes.push(
-            tileImg(`${canvas}_Base/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'base'),
-            tileImg(`${radarBase}/512/${z}/${wx}/${ty}/${radarSuffix}`, px, py, 'radar'),
+          visibleCoords.push({ wx, ty, px, py });
+          baseNodes.push(tileImg(`${canvas}_Base/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'base'));
+          overlayNodes.push(
             tileImg(`https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'roads'),
             tileImg(`${canvas}_Reference/MapServer/tile/${z}/${ty}/${wx}`, px, py, 'labels'));
         }
       }
-      tiles.replaceChildren(...nodes);
+      baseLayer.replaceChildren(...baseNodes);
+      overlayLayer.replaceChildren(...overlayNodes);
+      drawRadarTilesOnly();
+
       const here = worldPixel(lat, lon, z);
       pin.style.left = `${here.x - left}px`;
       pin.style.top = `${here.y - top}px`;
-      zoomIn.disabled = z >= MAX_ZOOM;
+      zoomIn.disabled = z >= maxZoom;
       zoomOut.disabled = z <= MIN_ZOOM;
     }
 
     function setZoom(next) {
-      if (next < MIN_ZOOM || next > MAX_ZOOM) return;
+      if (next < MIN_ZOOM || next > maxZoom) return;
       const factor = 2 ** (next - z);
       center = { x: center.x * factor, y: center.y * factor };
       z = next;
@@ -1096,24 +1419,286 @@
 
     if ('ResizeObserver' in window) new ResizeObserver(() => draw()).observe(map);
     requestAnimationFrame(draw);
-    return map;
+
+    if (activeFrames.length <= 1) {
+      return map;
+    }
+
+    // Interactive frame playback slider for multi-frame animations
+    const sliderId = `radar-frame-slider-${++radarSliderSeq}`;
+    const playBtn = el('button', { type: 'button', class: 'play-btn', 'aria-label': 'Play radar animation', text: '▶ Play' });
+    const sliderLabel = el('label', { for: sliderId, class: 'sr-only', text: 'Radar frame timeline' });
+    const slider = el('input', {
+      id: sliderId,
+      type: 'range',
+      min: '0',
+      max: String(activeFrames.length - 1),
+      step: '1',
+      value: String(frameIndex),
+    });
+    const readout = el('span', { class: 'frame-readout' });
+
+    function updateFrameUi() {
+      const f = activeFrames[frameIndex];
+      const timeText = formatRadarTimeShort(f?.timeIso) || f?.label || `Frame ${frameIndex + 1}`;
+      const summaryText = `Frame ${frameIndex + 1} of ${activeFrames.length}${f?.timeIso ? ` · ${formatRadarTimeShort(f.timeIso)}` : ''}`;
+      slider.value = String(frameIndex);
+      slider.setAttribute('aria-valuetext', `${ summaryText } (${ timeText })`);
+      readout.textContent = summaryText;
+      drawRadarTilesOnly();
+    }
+
+    let timer = null;
+    function stopPlayback() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      playBtn.textContent = '▶ Play';
+      playBtn.setAttribute('aria-label', 'Play radar animation');
+    }
+
+    playBtn.addEventListener('click', () => {
+      if (timer) {
+        stopPlayback();
+        return;
+      }
+      playBtn.textContent = '⏸ Pause';
+      playBtn.setAttribute('aria-label', 'Pause radar animation');
+      timer = setInterval(() => {
+        if (!document.body.contains(map)) {
+          stopPlayback();
+          return;
+        }
+        frameIndex = (frameIndex + 1) % activeFrames.length;
+        updateFrameUi();
+      }, 650);
+    });
+
+    slider.addEventListener('input', () => {
+      stopPlayback();
+      frameIndex = Number(slider.value);
+      updateFrameUi();
+    });
+
+    updateFrameUi();
+    const player = el('div', { class: 'radar-player' }, playBtn, sliderLabel, slider, readout);
+    return el('div', { class: 'radar-wrap' }, map, player);
   }
 
   function enhanceRadarImages(container, args) {
-    for (const img of container.querySelectorAll('img')) {
-      const match = img.getAttribute('src').match(RAINVIEWER_TILE);
-      if (!match) continue;
-      const [, radarBase, zoom, radarSuffix] = match;
-      let lat = Number(args.latitude);
-      let lon = Number(args.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        // Fall back to the coordinates printed in the tool output
-        const printed = lastMarkdown.match(/\*\*Location:\*\*\s*(-?[\d.]+),\s*(-?[\d.]+)/);
-        if (!printed) continue;
-        lat = Number(printed[1]);
-        lon = Number(printed[2]);
+    let lat = Number(args?.latitude);
+    let lon = Number(args?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      // Fall back to the coordinates printed in the tool output
+      const printed = lastMarkdown.match(/\*\*Location:\*\*\s*(-?[\d.]+),\s*(-?[\d.]+)/);
+      if (!printed) return;
+      lat = Number(printed[1]);
+      lon = Number(printed[2]);
+    }
+
+    // Collect all radar frames from either the "All frames:" timeline links or inline <img> elements
+    const imgs = [...container.querySelectorAll('img')];
+    const radarImgs = [];
+    for (const img of imgs) {
+      const parsed = parseRadarFrameUrl(img.getAttribute('src'), img.alt);
+      if (parsed) radarImgs.push({ img, parsed });
+    }
+    if (radarImgs.length === 0) return;
+
+    const frames = [];
+    const seenUrls = new Set();
+
+    // Check if there is an "All frames:" paragraph containing the complete frame list (> 5 frames)
+    let allFramesPara = null;
+    for (const p of container.querySelectorAll('p')) {
+      if (p.textContent.trim().startsWith('All frames:')) {
+        allFramesPara = p;
+        for (const a of p.querySelectorAll('a')) {
+          const href = a.getAttribute('href');
+          const parsed = parseRadarFrameUrl(href, a.textContent.trim());
+          if (parsed && !seenUrls.has(href)) {
+            seenUrls.add(href);
+            frames.push(parsed);
+          }
+        }
       }
-      img.replaceWith(buildRadarMap({ radarBase, radarSuffix, zoom: Number(zoom), lat, lon, label: img.alt }));
+    }
+
+    // Otherwise collect frames directly from the inline radar <img> elements
+    if (frames.length === 0) {
+      for (const { img, parsed } of radarImgs) {
+        const src = img.getAttribute('src');
+        if (!seenUrls.has(src)) {
+          seenUrls.add(src);
+          frames.push(parsed);
+        }
+      }
+    }
+
+    // Replace the first radar image with the unified interactive map (and frame slider if > 1 frame)
+    const firstImg = radarImgs[0].img;
+    const firstParent = firstImg.parentElement;
+    firstImg.replaceWith(buildRadarMap({ frames, lat, lon }));
+
+    // When multiple frames were consolidated into the slider, clean up the extra static frame headings/images
+    if (frames.length > 1) {
+      if (firstParent && firstParent.previousElementSibling?.tagName === 'H3' && /^Frame\s+\d+/i.test(firstParent.previousElementSibling.textContent)) {
+        firstParent.previousElementSibling.remove();
+      }
+      for (let i = 1; i < radarImgs.length; i++) {
+        const extraImg = radarImgs[i].img;
+        const p = extraImg.parentElement;
+        if (p && p.previousElementSibling?.tagName === 'H3' && /^Frame\s+\d+/i.test(p.previousElementSibling.textContent)) {
+          p.previousElementSibling.remove();
+        }
+        extraImg.remove();
+        if (p && p.tagName === 'P' && p.textContent.trim() === '' && p.children.length === 0) {
+          p.remove();
+        }
+      }
+      for (const p of container.querySelectorAll('p')) {
+        if (/^Showing \d+ of \d+ frames for brevity$/i.test(p.textContent.trim())) {
+          p.remove();
+        }
+      }
+      if (allFramesPara) {
+        allFramesPara.remove();
+      }
+    }
+  }
+
+  /**
+   * Consolidate multi-frame NOAA NESDIS GOES satellite images into an interactive
+   * frame player with Play/Pause and timeline slider.
+   */
+  function enhanceSatelliteImages(container) {
+    const imgs = [...container.querySelectorAll('img')].filter((img) =>
+      /^https:\/\/cdn\.star\.nesdis\.noaa\.gov\//i.test(img.getAttribute('src') || '')
+    );
+    if (imgs.length === 0) return;
+
+    const frames = [];
+    const seen = new Set();
+    let allFramesPara = null;
+    for (const p of container.querySelectorAll('p')) {
+      if (p.textContent.trim().startsWith('All frames:')) {
+        allFramesPara = p;
+        for (const a of p.querySelectorAll('a')) {
+          const href = a.getAttribute('href');
+          if (href && /^https:\/\/cdn\.star\.nesdis\.noaa\.gov\//i.test(href) && !seen.has(href)) {
+            seen.add(href);
+            frames.push({ url: href, label: a.textContent.trim() });
+          }
+        }
+      }
+    }
+    if (frames.length === 0) {
+      for (const img of imgs) {
+        const src = img.getAttribute('src');
+        if (src && !seen.has(src)) {
+          seen.add(src);
+          frames.push({ url: src, label: img.alt || 'NOAA GOES satellite imagery' });
+        }
+      }
+    }
+    if (frames.length <= 1) return;
+
+    let frameIndex = frames.length - 1;
+    let timer = null;
+    const viewImg = el('img', {
+      src: frames[frameIndex].url,
+      alt: frames[frameIndex].label,
+      style: 'display:block;width:100%;max-height:520px;object-fit:contain;background:#0a0f18',
+      referrerpolicy: 'no-referrer',
+    });
+    const playBtn = el('button', {
+      class: 'btn small',
+      type: 'button',
+      text: '▶ Play',
+      'aria-label': 'Play satellite animation',
+    });
+    const sliderId = `sat-slider-${Math.random().toString(36).slice(2, 8)}`;
+    const sliderLabel = el('label', { for: sliderId, class: 'sr-only', text: 'Satellite animation frame' });
+    const slider = el('input', {
+      id: sliderId,
+      type: 'range',
+      min: '0',
+      max: String(frames.length - 1),
+      step: '1',
+      value: String(frameIndex),
+    });
+    const readout = el('span', { class: 'radar-frame-readout' });
+
+    function updateUi() {
+      const f = frames[frameIndex];
+      viewImg.src = f.url;
+      viewImg.alt = f.label;
+      slider.value = String(frameIndex);
+      const isoMatch = f.label.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/);
+      const timeShort = isoMatch ? isoMatch[0].replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : `Frame ${frameIndex + 1}`;
+      readout.textContent = `${frameIndex + 1}/${frames.length} · ${timeShort}`;
+    }
+
+    function stopPlayback() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      playBtn.textContent = '▶ Play';
+    }
+
+    playBtn.addEventListener('click', () => {
+      if (timer) {
+        stopPlayback();
+        return;
+      }
+      playBtn.textContent = '⏸ Pause';
+      timer = setInterval(() => {
+        if (!document.body.contains(viewImg)) {
+          stopPlayback();
+          return;
+        }
+        frameIndex = (frameIndex + 1) % frames.length;
+        updateUi();
+      }, 650);
+    });
+
+    slider.addEventListener('input', () => {
+      stopPlayback();
+      frameIndex = Number(slider.value);
+      updateUi();
+    });
+
+    updateUi();
+    const player = el('div', { class: 'radar-player' }, playBtn, sliderLabel, slider, readout);
+    const wrap = el('div', { class: 'radar-wrap' }, viewImg, player);
+
+    const firstImg = imgs[0];
+    const firstParent = firstImg.parentElement;
+    firstImg.replaceWith(wrap);
+
+    if (firstParent && firstParent.previousElementSibling?.tagName === 'H3' && /^Frame\s+\d+/i.test(firstParent.previousElementSibling.textContent)) {
+      firstParent.previousElementSibling.remove();
+    }
+    for (let i = 1; i < imgs.length; i++) {
+      const extraImg = imgs[i];
+      const p = extraImg.parentElement;
+      if (p && p.previousElementSibling?.tagName === 'H3' && /^Frame\s+\d+/i.test(p.previousElementSibling.textContent)) {
+        p.previousElementSibling.remove();
+      }
+      extraImg.remove();
+      if (p && p.tagName === 'P' && p.textContent.trim() === '' && p.children.length === 0) {
+        p.remove();
+      }
+    }
+    for (const p of container.querySelectorAll('p')) {
+      if (/^Showing \d+ of \d+ frames for brevity$/i.test(p.textContent.trim())) {
+        p.remove();
+      }
+    }
+    if (allFramesPara) {
+      allFramesPara.remove();
     }
   }
 
@@ -1385,7 +1970,7 @@
       const input = el('input', { id: `cx-${key.slice(0, 3)}`, name: key, type: 'number', step: 'any' });
       // 4 decimals (~11 m); a remembered or picked place can carry 7
       if (Number.isFinite(Number(value)) && value !== null && value !== '') input.value = Number(Number(value).toFixed(4));
-      input.addEventListener('input', () => { cx.place = null; });
+      input.addEventListener('input', () => { cx.place = null; updateLocationSummary(); });
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadClimate(); });
       return el('div', { class: 'field', 'data-key': key, 'data-kind': 'number' },
         el('label', { class: 'name', for: input.id, text: label }), input);
@@ -1410,12 +1995,18 @@
       el('div', { class: 'cx-controls' },
         helper,
         el('div', { class: 'cx-form' },
-          numField('latitude', 'Latitude', saved.latitude),
-          numField('longitude', 'Longitude', saved.longitude),
+          el('div', { class: 'coords', hidden: true },
+            numField('latitude', 'Latitude', saved.latitude),
+            numField('longitude', 'Longitude', saved.longitude)),
           el('div', { class: 'field cx-baseline' }, el('label', { class: 'name', for: 'cx-baseline', text: 'Normals baseline' }), baselineSelect),
           el('div', { class: 'field cx-load' }, el('button', { class: 'btn primary', type: 'button', id: 'cx-load', onclick: loadClimate }, el('span', { text: 'Load' }))))),
       el('div', { id: 'cx-status' }),
       el('div', { id: 'cx-body' }));
+    $('#tool-card').classList.remove('collapsed');
+    if (cx.place && cx.place.label && Number.isFinite(Number(cx.place.latitude))) {
+      pickedPlace = { label: cx.place.label, latitude: Number(Number(cx.place.latitude).toFixed(4)), longitude: Number(Number(cx.place.longitude).toFixed(4)) };
+    }
+    updateLocationSummary();
 
     if (cx.data) renderClimate();
     else if (saved.latitude !== undefined && saved.longitude !== undefined) loadClimate();
@@ -1947,6 +2538,7 @@
       const helper = $('#tool-card .loc');
       const props = current.inputSchema.properties || {};
       if (helper) helper.replaceWith(buildLocationHelper(props));
+      updateLocationSummary();
     }
   }
 

@@ -527,7 +527,7 @@ const TOOL_DEFINITIONS = {
 
   get_weather_imagery: {
     name: 'get_weather_imagery' as const,
-    description: 'Get weather imagery including radar, satellite, and precipitation maps for a location (global coverage). Use this when asked about "show radar", "satellite image", "precipitation map", "weather map", "animated radar", or "what does radar show". Returns image URLs with timestamps for current or animated weather visualization. Supports precipitation radar (global via RainViewer). Includes disclaimer about data delays and official forecast consultation. For numerical forecast data, use get_forecast instead.',
+    description: 'Get weather radar, precipitation, and satellite imagery for a location (NOAA/NWS MRMS radar across the United States and territories, Iowa Environmental Mesonet radar archive back to 2011, RainViewer global radar, and NOAA NESDIS GOES-East/West satellite imagery). Use this when asked about "show radar", "satellite view", "cloud cover imagery", "precipitation map", "weather map", "animated radar", "past radar", or "what does radar show". Returns image URLs with timestamps, optional radar-estimated precipitation amounts (1-72h QPE in the US), and optional embedded MCP image content (`include_image: true`) for direct AI visual inspection.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -549,21 +549,63 @@ const TOOL_DEFINITIONS = {
         },
         type: {
           type: 'string' as const,
-          description: 'Type of imagery: "radar", "satellite", or "precipitation" (default: "precipitation")',
+          description: 'Type of imagery: "radar", "precipitation", or "satellite" (default: "precipitation")',
           enum: ['radar', 'satellite', 'precipitation'],
           default: 'precipitation'
+        },
+        source: {
+          type: 'string' as const,
+          description: 'Radar provider: "auto" (NWS for US, IEM for US historical, RainViewer globally), "nws", "iem", or "rainviewer" (default: "auto")',
+          enum: ['auto', 'nws', 'iem', 'rainviewer'],
+          default: 'auto'
+        },
+        product: {
+          type: 'string' as const,
+          description: 'Radar product (base_reflectivity, composite_reflectivity, echo_tops, precip_type) or NOAA GOES satellite band when type="satellite" (geocolor, visible, infrared, water_vapor, shortwave_infrared)',
+          enum: [
+            'base_reflectivity',
+            'composite_reflectivity',
+            'echo_tops',
+            'precip_type',
+            'geocolor',
+            'visible',
+            'infrared',
+            'water_vapor',
+            'shortwave_infrared'
+          ],
+          default: 'base_reflectivity'
         },
         animated: {
           type: 'boolean' as const,
           description: 'Return animated frames showing progression over time (default: false)',
           default: false
         },
-        layers: {
-          type: 'array' as const,
-          description: 'Optional layers to include in imagery (future enhancement)',
-          items: {
-            type: 'string' as const
-          }
+        frames: {
+          type: 'number' as const,
+          description: 'Number of radar frames to return (1-24; default: 1, or 6 when animated)',
+          minimum: 1,
+          maximum: 24
+        },
+        past_minutes: {
+          type: 'number' as const,
+          description: 'How far back in minutes the animation window spans (5-180, default: 60)',
+          minimum: 5,
+          maximum: 180,
+          default: 60
+        },
+        at: {
+          type: 'string' as const,
+          description: 'ISO-8601 UTC timestamp for historical radar (e.g. "2025-06-12T22:00:00Z"). Supported back to 2011-02-16 for US locations via IEM.'
+        },
+        include_values: {
+          type: 'boolean' as const,
+          description: 'Include radar-estimated precipitation totals (1, 3, 6, 12, 24, 48, 72h in inches and mm) at the location from NWS MRMS QPE (US only)',
+          default: false
+        },
+        include_image: {
+          type: 'boolean' as const,
+          description: 'Attach the latest weather image directly as an MCP image content block (composited basemap + radar + pin PNG for radar, or NOAA GOES JPEG for satellite) so vision-capable AI clients can visually inspect it (default: false)',
+          default: false
         }
       },
       required: ['type']
@@ -930,14 +972,23 @@ export function createMcpServer(services: WeatherServices): Server {
           return completeSuccess(await withAnalytics('get_weather_imagery', async () => {
             const result = await getWeatherImagery(toolArgs as any);
             const formatted = formatWeatherImageryResponse(result);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: formatted
-                }
-              ]
-            };
+            const content: Array<
+              | { type: 'text'; text: string }
+              | { type: 'image'; data: string; mimeType: string }
+            > = [
+              {
+                type: 'text',
+                text: formatted
+              }
+            ];
+            if (result.imageContent) {
+              content.push({
+                type: 'image',
+                data: result.imageContent.data,
+                mimeType: result.imageContent.mimeType
+              });
+            }
+            return { content };
           }));
 
         case 'get_lightning_activity':

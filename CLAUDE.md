@@ -32,7 +32,7 @@ src/
 │   ├── marineConditionsHandler.ts
 │   ├── riverConditionsHandler.ts
 │   ├── wildfireHandler.ts
-│   ├── weatherImageryHandler.ts        # RainViewer radar/precipitation imagery
+│   ├── weatherImageryHandler.ts        # Multi-provider radar (NWS MRMS, IEM archive, RainViewer), NOAA GOES satellite, QPE point amounts, MCP image content
 │   ├── lightningHandler.ts             # Blitzortung real-time lightning
 │   └── savedLocationsHandler.ts        # Saved locations management (v1.7.0)
 ├── services/                   # External API clients
@@ -47,6 +47,7 @@ src/
 │   ├── nifc.ts                 # NIFC wildfire ArcGIS API client
 │   ├── geocoding.ts            # Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
 │   ├── ncei.ts                 # NOAA NCEI climate normals client (optional token)
+│   ├── radar/                  # Multi-provider radar sources (NwsRadarSource, IemRadarSource, RainViewerRadarSource) + NwsQpeService + NwsGoesSatelliteService
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
 ├── web/                        # HTTP server: /mcp for AI clients + web console
@@ -86,6 +87,8 @@ src/
 │   ├── timezone.ts             # Luxon-based timezone-aware formatting
 │   ├── temperatureConversion.ts# °C ↔ °F helpers
 │   ├── geography.ts            # Great Lakes / coastal bay geographic detection
+│   ├── radarCoverage.ts        # US/territory radar workspace detection + EPSG:3857 Web Mercator bbox math
+│   ├── pngComposite.ts         # Zero-dependency PNG decoder/compositor/encoder (node:zlib) for MCP radar image content
 │   └── version.ts              # Package version helper
 ├── config/                     # Configuration
 │   ├── cache.ts                # Cache TTL settings + env-var parsing
@@ -130,7 +133,7 @@ tests/
 8. **search_location** - Location search/geocoding (Nominatim/OSM)
 9. **get_air_quality** - AQI + pollutants + UV index (Open-Meteo, global)
 10. **get_marine_conditions** - Wave height, swell, currents; auto-selects NOAA for Great Lakes/coastal bays, Open-Meteo for oceans
-11. **get_weather_imagery** - Precipitation radar / animated loops (RainViewer, global)
+11. **get_weather_imagery** - Weather radar, animated loops, historical radar, and satellite imagery: NOAA/NWS MRMS across US & territories (base/composite reflectivity, echo tops, precip type), IEM NEXRAD archive back to 2011 (`at`), RainViewer global fallback, NOAA NESDIS GOES-19/18 satellite (`type: "satellite"`, GeoColor/visible/IR/water vapor), optional 1–72h radar-estimated precipitation amounts (`include_values` via NWS MRMS QPE), and optional MCP vision image content (`include_image: true`)
 12. **get_lightning_activity** - Real-time lightning detection (Blitzortung.org, global)
 13. **get_river_conditions** - River levels and flood monitoring (NOAA NWPS + USGS, US only)
 14. **get_wildfire_info** - Active wildfire tracking (NIFC WFIGS, US only)
@@ -159,8 +162,9 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 
 `web/index.html` is a self-contained single page (vanilla JS, no build step, ~87 KB):
 - Builds forms dynamically from each tool's JSON schema; remembers each tool's last inputs in localStorage
-- **Location helpers:** saved-location picker, name search, browser geolocation
-- **Radar view:** RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–7); pin at the location
+- **Compact forms:** latitude/longitude/location_name fields live in a folded `.coords` group (toggled from the location bar), descriptions are hidden unless **Show help** (`weather-console:show-help`), booleans render as chip `.field`s in one `.toggles` row, and after a successful run `#tool-card.collapsed` folds the form into a one-line `summarizeArgs()` summary with Edit / Run again. `readForm()` still reads every `.field`, hidden or not
+- **Location helpers:** one-row bar with saved-location picker, name search, browser geolocation, a `📍` readout (`describeLocation()`), and the Coordinates toggle
+- **Radar view:** NWS GeoServer WMS, IEM WMS-T, and RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–11 for WMS, 3–7 for RainViewer), pin at the location, and a Play/Pause frame timeline slider for multi-frame animations
 - **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
 
 Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Origin` (CSRF) against loopback names plus `WEB_ALLOWED_HOSTS`; optional bearer token on `/mcp` and `/api/*`; JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
@@ -305,6 +309,7 @@ tests/
 │   ├── precip-type.test.ts             # Precipitation type classification
 │   ├── climatology.test.ts             # Per-calendar-day percentile curves
 │   ├── imagery-handler.test.ts         # Weather imagery handler
+│   ├── radar-sources.test.ts           # Multi-provider radar (NWS, IEM archive, RainViewer fallback), QPE point amounts, Web Mercator bbox parity (local stub server)
 │   ├── lightning-handler.test.ts       # Lightning handler
 │   ├── rainviewer.test.ts              # RainViewer tile calculations
 │   ├── location-resolver.test.ts       # Location resolver

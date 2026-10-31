@@ -148,7 +148,7 @@ By default the server uses stdio and opens no network port. `npm run web` (and t
 
 - External API calls use **HTTPS**, with certificate validation enabled by default (via axios), with one exception: the lightning feed (`get_lightning_activity`) connects to the Blitzortung community MQTT broker, which is **plain, unencrypted MQTT**. It only receives geohash subscriptions (roughly 4 to 40 km precision, not exact coordinates); set `BLITZORTUNG_MQTT_URL` to a TLS broker to avoid this (see `.env.example`)
 - Place searches send the place name you typed to Nominatim, the US Census geocoder, and/or Open-Meteo
-- The web console's radar map makes your browser (not the server) request map tiles from Esri and RainViewer
+- The web console's radar map makes your browser (not the server) request map tiles and WMS images from Esri, NOAA/NWS GeoServer, the Iowa Environmental Mesonet (IEM), or RainViewer; those image URLs carry the bounding box or tile coordinates of the viewed area
 
 ## Security Testing
 
