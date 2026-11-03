@@ -31,6 +31,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false
       });
 
@@ -45,6 +46,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'radar',
+        source: 'rainviewer',
         animated: true
       });
 
@@ -85,15 +87,35 @@ describe('Weather Imagery Handler', () => {
       ).rejects.toThrow('Invalid imagery type');
     });
 
-    it('should reject satellite type (not yet implemented)', async () => {
+    it('should reject satellite type outside NOAA GOES coverage (e.g. Europe)', async () => {
+      await expect(
+        getWeatherImagery({
+          latitude: 51.5074,
+          longitude: -0.1278,
+          type: 'satellite',
+          animated: false
+        })
+      ).rejects.toThrow('NOAA GOES-East (GOES-19) and GOES-West (GOES-18)');
+    });
+
+    it('should reject invalid satellite product or non-boolean include_image', async () => {
       await expect(
         getWeatherImagery({
           latitude: 40.7128,
           longitude: -74.006,
           type: 'satellite',
-          animated: false
+          product: 'invalid_band' as any
         })
-      ).rejects.toThrow('not yet implemented');
+      ).rejects.toThrow('Invalid satellite product');
+
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          include_image: 'yes' as any
+        })
+      ).rejects.toThrow('include_image parameter must be a boolean');
     });
 
     it('should reject non-boolean animated parameter', async () => {
@@ -105,6 +127,53 @@ describe('Weather Imagery Handler', () => {
           animated: 'yes' as any
         })
       ).rejects.toThrow('animated parameter must be a boolean');
+    });
+
+    it('should reject invalid source, product, frames, past_minutes, or at parameters', async () => {
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          source: 'unknown' as any
+        })
+      ).rejects.toThrow('Invalid radar source');
+
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          product: 'unknown' as any
+        })
+      ).rejects.toThrow('Invalid radar product');
+
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          frames: 30
+        })
+      ).rejects.toThrow('frames parameter must be an integer between 1 and 24');
+
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          past_minutes: 2
+        })
+      ).rejects.toThrow('past_minutes parameter must be a number between 5 and 180');
+
+      await expect(
+        getWeatherImagery({
+          latitude: 40.7128,
+          longitude: -74.006,
+          type: 'radar',
+          at: 'not-a-date'
+        })
+      ).rejects.toThrow('Invalid ISO-8601 timestamp');
     });
 
     it('should reject non-array layers parameter', async () => {
@@ -140,6 +209,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false,
         layers: ['base', 'overlay']
       });
@@ -153,7 +223,8 @@ describe('Weather Imagery Handler', () => {
       const result = await getWeatherImagery({
         latitude: 40.7128,
         longitude: -74.006,
-        type: 'precipitation'
+        type: 'precipitation',
+        source: 'rainviewer'
       });
 
       expect(result.animated).toBe(false);
@@ -167,6 +238,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: true
       });
 
@@ -190,6 +262,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false
       });
 
@@ -218,6 +291,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false
       });
 
@@ -227,7 +301,7 @@ describe('Weather Imagery Handler', () => {
     it('should set correct resolution for animated imagery', async () => {
       const mockFrames: ImageryFrame[] = Array.from({ length: 12 }, (_, i) => ({
         url: `https://example.com/frame${i}.png`,
-        timestamp: new Date(),
+        timestamp: new Date(Date.now() - (12 - i) * 300_000),
         description: 'Test'
       }));
       mockGetPrecipitationRadar.mockResolvedValue(mockFrames);
@@ -236,6 +310,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: true
       });
 
@@ -249,6 +324,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false
       });
 
@@ -263,6 +339,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'radar',
+        source: 'rainviewer',
         animated: false
       });
 
@@ -501,6 +578,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: true
       });
 
@@ -526,6 +604,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: true
       });
 
@@ -571,6 +650,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false,
         layers: []
       });
@@ -587,6 +667,7 @@ describe('Weather Imagery Handler', () => {
         latitude: 40.7128,
         longitude: -74.006,
         type: 'precipitation',
+        source: 'rainviewer',
         animated: false,
         layers
       });

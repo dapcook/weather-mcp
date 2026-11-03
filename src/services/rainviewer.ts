@@ -8,20 +8,32 @@ import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger.js';
 import { RainViewerResponse, RainViewerFrame, ImageryFrame } from '../types/imagery.js';
 import { ServiceUnavailableError } from '../errors/ApiError.js';
+import { Cache } from '../utils/cache.js';
+import { CacheConfig } from '../config/cache.js';
+import { getUserAgent } from '../utils/version.js';
 
 export class RainViewerService {
   private client: AxiosInstance;
+  private cache: Cache<RainViewerResponse>;
   private readonly baseUrl = 'https://api.rainviewer.com';
   private readonly tileHost = 'https://tilecache.rainviewer.com';
 
-  constructor() {
+  constructor(options?: { baseURL?: string; timeout?: number }) {
     this.client = axios.create({
-      baseURL: this.baseUrl,
-      timeout: 10000,
+      baseURL: options?.baseURL ?? this.baseUrl,
+      timeout: options?.timeout ?? 10000,
       headers: {
-        'User-Agent': 'weather-mcp-server/1.4.0'
+        'User-Agent': getUserAgent()
       }
     });
+    this.cache = new Cache<RainViewerResponse>(16);
+  }
+
+  /**
+   * Clear cached radar metadata (used in tests)
+   */
+  clearCache(): void {
+    this.cache.clear();
   }
 
   /**
@@ -29,6 +41,15 @@ export class RainViewerService {
    * Returns timestamps and paths for animated radar
    */
   async getRadarData(): Promise<RainViewerResponse> {
+    const cacheKey = 'rainviewer:weather-maps';
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        logger.info('RainViewer radar metadata cache hit');
+        return cached;
+      }
+    }
+
     try {
       logger.info('Fetching RainViewer radar data');
 
@@ -39,6 +60,10 @@ export class RainViewerService {
           'RainViewer',
           'Invalid response format from RainViewer API'
         );
+      }
+
+      if (CacheConfig.enabled) {
+        this.cache.set(cacheKey, response.data, CacheConfig.ttl.weatherImagery);
       }
 
       logger.info('RainViewer radar data retrieved successfully', {

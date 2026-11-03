@@ -8,6 +8,8 @@ This project aims to foster an open and welcoming environment. Please be respect
 
 ## How to Contribute
 
+Looking for something to work on? The open items are listed in [docs/TODO.md](./docs/TODO.md).
+
 ### Reporting Bugs
 
 If you find a bug, please open an issue on GitHub with:

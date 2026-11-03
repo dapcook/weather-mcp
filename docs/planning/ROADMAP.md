@@ -2,6 +2,8 @@
 
 This document outlines planned enhancements for future versions of the Weather MCP server.
 
+> Long-term ideas. For the short list of concrete open work (dependency upgrade, tests to run, small cleanups), see [../TODO.md](../TODO.md). What has shipped is in the [Changelog](../../CHANGELOG.md); the web console, climate explorer and Docker deployment are described in [../WEB_CONSOLE.md](../WEB_CONSOLE.md) and [../DOCKER.md](../DOCKER.md) and are not tracked in the version sections below.
+
 ## Design Philosophy: Lean & Efficient
 
 **Core Principle:** Maximize functionality while minimizing token overhead and tool proliferation.

@@ -95,8 +95,9 @@ function getOrGenerateAnalyticsSalt(): string {
     return process.env.ANALYTICS_SALT;
   }
 
-  // Store in user's config directory (NOT in project directory)
-  const configDir = path.join(os.homedir(), '.weather-mcp');
+  // Store in user's config directory (NOT in project directory), or the data
+  // directory when set (e.g. a Docker volume; the container's home is read-only)
+  const configDir = process.env.WEATHER_MCP_DATA_DIR?.trim() || path.join(os.homedir(), '.weather-mcp');
   const saltFile = path.join(configDir, 'analytics-salt');
 
   try {

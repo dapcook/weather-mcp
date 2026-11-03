@@ -19,6 +19,8 @@ import type {
   ClimateNormals
 } from '../types/openmeteo.js';
 import { Cache } from '../utils/cache.js';
+import { ByteBudgetCache } from '../utils/byteBudgetCache.js';
+import { DailyRecordStore, DailyRecord, addDays, daysBetween, recordEndDate } from './dailyRecordStore.js';
 import { CacheConfig, getHistoricalDataTTL } from '../config/cache.js';
 import { validateLatitude, validateLongitude } from '../utils/validation.js';
 import { logger, redactCoordinatesForLogging } from '../utils/logger.js';
@@ -40,6 +42,219 @@ export interface OpenMeteoServiceConfig {
   marineURL?: string;
   timeout?: number;
   maxRetries?: number;
+  /** Memory budget, in bytes, for cached full daily records (see getDailyTemperatureRecord) */
+  dailyRecordCacheBytes?: number;
+  /**
+   * Folder where full daily records are also saved, so a restart does not download them
+   * again. Unset means memory only.
+   */
+  dailyRecordStoreDir?: string;
+  /** Size limit for that folder, in bytes */
+  dailyRecordStoreMaxBytes?: number;
+}
+
+/**
+ * When a saved record is topped up, this many days at its end are fetched again along
+ * with the new days. The newest days start as preliminary values that Open-Meteo
+ * revises over the following weeks, so re-reading them keeps the saved copy accurate.
+ * (100 days of three variables costs about 2 calls, against about 680 for a full record.)
+ */
+export const DAILY_RECORD_REFRESH_OVERLAP_DAYS = 100;
+
+/**
+ * Individual forecast models Open-Meteo serves on /forecast (via its `models` parameter), used
+ * by the model comparison and by get_forecast's `model` option, each with the name of the
+ * metadata file that reports its latest run. Names checked against the live API on 2026-10-28;
+ * Open-Meteo renames models occasionally.
+ */
+export const OPEN_METEO_MODELS = {
+  ecmwf_ifs: { metadata: 'ecmwf_ifs' },
+  ecmwf_aifs025_single: { metadata: 'ecmwf_aifs025_single' },
+  icon_global: { metadata: 'dwd_icon' },
+  gem_global: { metadata: 'cmc_gem_gdps' },
+  gfs_global: { metadata: 'ncep_gfs013' },
+  ncep_nam_conus: { metadata: 'ncep_nam_conus' },
+  ncep_hrrr_conus: { metadata: 'ncep_hrrr_conus' },
+} as const;
+
+export type OpenMeteoModelId = keyof typeof OPEN_METEO_MODELS;
+
+/**
+ * Models a user can ask get_forecast for, by the same short names the model comparison uses.
+ * Reach is how far each model's free output goes (checked against the live API on 2026-10-28).
+ */
+export const FORECAST_MODELS = {
+  ecmwf: { id: 'ecmwf_ifs', label: 'ECMWF IFS (European Centre)', reach: '15 days' },
+  ecmwf_aifs: { id: 'ecmwf_aifs025_single', label: 'ECMWF AIFS (European Centre AI model)', reach: '15 days' },
+  icon: { id: 'icon_global', label: 'ICON Global (Germany, DWD)', reach: 'about 7.5 days' },
+  gem: { id: 'gem_global', label: 'GEM Global (Canada, ECCC)', reach: '10 days' },
+  gfs: { id: 'gfs_global', label: 'GFS (NOAA)', reach: '16 days' },
+  nam: { id: 'ncep_nam_conus', label: 'NAM CONUS (NOAA)', reach: 'about 3 days, continental US only' },
+  hrrr: { id: 'ncep_hrrr_conus', label: 'HRRR (NOAA)', reach: 'about 2 days, continental US only' },
+} as const satisfies Record<string, { id: OpenMeteoModelId; label: string; reach: string }>;
+
+export type ForecastModel = keyof typeof FORECAST_MODELS;
+
+const OUTSIDE_MODEL_AREA =
+  'This model has no forecast for this location; it may not cover it (NAM and HRRR cover the continental US only). ' +
+  'Try "gfs", "ecmwf", "icon" or "gem", which are global.';
+
+/**
+ * Turn the API's nulls (a variable a model doesn't provide, or hours past its run) into missing
+ * entries, which is what the forecast formatter checks for. Without this, a model with no UV
+ * index (most single models) would crash the formatter, and a null temperature would print as 0°F.
+ */
+function nullsToMissing(block: object | undefined): void {
+  if (!block) {
+    return;
+  }
+  for (const values of Object.values(block)) {
+    if (Array.isArray(values)) {
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] === null) {
+          delete values[i];
+        }
+      }
+    }
+  }
+}
+
+/** Cut every series in a block to its first `length` entries */
+function truncateSeries(block: object, length: number): void {
+  for (const [key, values] of Object.entries(block)) {
+    if (Array.isArray(values)) {
+      (block as Record<string, unknown[]>)[key] = values.slice(0, length);
+    }
+  }
+}
+
+/** Entries up to the last one where `values` has data, i.e. how far a model's run reaches */
+function lengthWithData(values: unknown[] | undefined): number {
+  if (!values) {
+    return 0;
+  }
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (typeof values[i] === 'number') {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+/**
+ * A reported run older than this is treated as unknown. Every model here runs at least twice a
+ * day, so an older time means the metadata file is stale (GEM's was months old when checked),
+ * and showing it would mislabel the forecast.
+ */
+const MODEL_RUN_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
+/** A full daily record, plus a note if a saved one could not be brought up to date */
+export interface DailyRecordResult {
+  record: OpenMeteoHistoricalResponse;
+  /** Why a saved record was returned without being refreshed (e.g. Open-Meteo is rate limiting) */
+  refreshError?: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Rebuild the API's response shape from a saved record (days are consecutive, so dates are derived) */
+function responseFromRecord(saved: DailyRecord): OpenMeteoHistoricalResponse {
+  const first = Date.parse(`${saved.startDate}T00:00:00Z`);
+  const time = saved.high.map((_, i) => new Date(first + i * DAY_MS).toISOString().slice(0, 10));
+  return {
+    latitude: saved.latitude,
+    longitude: saved.longitude,
+    generationtime_ms: 0,
+    utc_offset_seconds: saved.utcOffsetSeconds,
+    timezone: saved.timezone,
+    timezone_abbreviation: saved.timezoneAbbreviation,
+    elevation: saved.elevation,
+    daily: {
+      time,
+      temperature_2m_max: saved.high as number[],
+      temperature_2m_min: saved.low as number[],
+      precipitation_sum: saved.precipitation as number[],
+    },
+  };
+}
+
+/** The compact form to save, or null if the days are not consecutive (so dates could not be rebuilt) */
+function recordFromResponse(response: OpenMeteoHistoricalResponse): DailyRecord | null {
+  const daily = response.daily;
+  if (!daily || daily.time.length === 0) {
+    return null;
+  }
+  const n = daily.time.length;
+  const first = Date.parse(`${daily.time[0]}T00:00:00Z`);
+  if (!Number.isFinite(first)) {
+    return null;
+  }
+  for (let i = 0; i < n; i++) {
+    if (new Date(first + i * DAY_MS).toISOString().slice(0, 10) !== daily.time[i]) {
+      return null;
+    }
+  }
+  const series = (values: number[] | undefined): Array<number | null> =>
+    values && values.length === n
+      ? values.map((v) => (typeof v === 'number' && Number.isFinite(v) ? v : null))
+      : new Array<number | null>(n).fill(null);
+  return {
+    latitude: response.latitude,
+    longitude: response.longitude,
+    elevation: response.elevation,
+    timezone: response.timezone,
+    timezoneAbbreviation: response.timezone_abbreviation,
+    utcOffsetSeconds: response.utc_offset_seconds,
+    startDate: daily.time[0],
+    high: series(daily.temperature_2m_max),
+    low: series(daily.temperature_2m_min),
+    precipitation: series(daily.precipitation_sum),
+  };
+}
+
+/** A short, single-line reason for showing to the user */
+function describeRefreshError(error: unknown): string {
+  const text = error instanceof ApiError ? error.userMessage : error instanceof Error ? error.message : 'Unknown error';
+  return text.replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+/**
+ * Default budget for cached full daily records. One 86-year record is about 2 MB
+ * once parsed, so this keeps roughly 50 places before the oldest-used are dropped,
+ * well inside a 768 MB container.
+ */
+export const DEFAULT_DAILY_RECORD_CACHE_BYTES = 96 * 1024 * 1024;
+
+/**
+ * Approximate memory held by a parsed daily record: per day, three numbers
+ * (8 bytes each) plus a date string and its slot in the array (about 40 bytes).
+ * Measured at about 2 MB for 31,708 days, which this matches.
+ */
+export function estimateDailyRecordBytes(record: OpenMeteoHistoricalResponse): number {
+  return (record.daily?.time.length ?? 0) * 64;
+}
+
+/**
+ * Open-Meteo's own explanation of a rate limit (e.g. "Minutely API request limit
+ * exceeded. Please try again in one minute."), cleaned up because it is shown to
+ * users and logged: control characters removed, whitespace collapsed, length capped.
+ */
+function rateLimitReason(data: unknown): string | undefined {
+  if (typeof data !== 'object' || data === null) {
+    return undefined;
+  }
+  const reason = (data as { reason?: unknown }).reason;
+  if (typeof reason !== 'string') {
+    return undefined;
+  }
+  const cleaned = reason.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+  return cleaned || undefined;
+}
+
+/** Seconds from a Retry-After header (the HTTP-date form is not used by Open-Meteo and is ignored) */
+function retryAfterSeconds(header: unknown): number | undefined {
+  const seconds = Number(Array.isArray(header) ? header[0] : header);
+  return Number.isFinite(seconds) && seconds >= 1 && seconds <= 3600 ? Math.ceil(seconds) : undefined;
 }
 
 export class OpenMeteoService {
@@ -50,6 +265,12 @@ export class OpenMeteoService {
   private marineClient: AxiosInstance;
   private maxRetries: number;
   private cache: Cache;
+  /** Full daily records are large, so they are limited by memory rather than by entry count */
+  private dailyRecordCache: ByteBudgetCache<OpenMeteoHistoricalResponse>;
+  /** The same records on disk, if configured, so they survive a restart */
+  private dailyRecordStore: DailyRecordStore | null;
+  /** Loads in progress, so two requests for one place share a single download */
+  private dailyRecordLoads = new Map<string, Promise<DailyRecordResult>>();
 
   constructor(config: OpenMeteoServiceConfig = {}) {
     const {
@@ -64,6 +285,10 @@ export class OpenMeteoService {
 
     this.maxRetries = maxRetries;
     this.cache = new Cache(CacheConfig.maxSize);
+    this.dailyRecordCache = new ByteBudgetCache(config.dailyRecordCacheBytes ?? DEFAULT_DAILY_RECORD_CACHE_BYTES);
+    this.dailyRecordStore = config.dailyRecordStoreDir
+      ? new DailyRecordStore(config.dailyRecordStoreDir, { maxBytes: config.dailyRecordStoreMaxBytes })
+      : null;
 
     // Historical weather client
     this.client = axios.create({
@@ -167,13 +392,26 @@ export class OpenMeteoService {
         );
       }
 
-      // Rate limit error
+      // Rate limit error. Open-Meteo says which limit was hit (per minute, hour or day),
+      // which decides how long to wait, so pass its explanation on.
       if (status === 429) {
+        const reason = rateLimitReason(data);
+        const retryAfter = retryAfterSeconds(error.response.headers?.['retry-after']);
         logger.warn('Rate limit exceeded', {
           service: 'OpenMeteo',
+          reason,
           securityEvent: true
         });
-        throw new RateLimitError('OpenMeteo');
+        const explanation = reason
+          ? `Open-Meteo says: "${reason}"`
+          : 'Open-Meteo is limiting requests from this connection. Wait about a minute and try again.';
+        throw new RateLimitError(
+          'OpenMeteo',
+          `Rate limit exceeded. ${explanation}${retryAfter ? ` Retry after ${retryAfter} seconds.` : ''} ` +
+            'Requests that cover many days count as several calls against its free limits, ' +
+            'so loading a long history can use them up quickly.',
+          retryAfter
+        );
       }
 
       // Server errors
@@ -260,6 +498,7 @@ export class OpenMeteoService {
    */
   clearCache(): void {
     this.cache.clear();
+    this.dailyRecordCache.clear();
   }
 
   /**
@@ -403,9 +642,58 @@ export class OpenMeteoService {
     startDate: string,
     endDate: string
   ): Promise<OpenMeteoHistoricalResponse> {
+    return (await this.getDailyTemperatureRecordWithStatus(latitude, longitude, startDate, endDate)).record;
+  }
+
+  /**
+   * Like getDailyTemperatureRecord, but says when a saved record had to be returned
+   * without bringing it up to date (for example because Open-Meteo is rate limiting).
+   *
+   * Records are looked up in memory, then in the data folder, then downloaded. A saved
+   * record only needs its newest days fetched, which costs a fraction of a download.
+   */
+  async getDailyTemperatureRecordWithStatus(
+    latitude: number,
+    longitude: number,
+    startDate: string,
+    endDate: string
+  ): Promise<DailyRecordResult> {
     validateLatitude(latitude);
     validateLongitude(longitude);
 
+    if (!CacheConfig.enabled) {
+      return { record: await this.downloadDailyRecord(latitude, longitude, startDate, endDate) };
+    }
+
+    // Kept in a cache limited by memory, not entry count: a record is about 2 MB, so
+    // counting entries would let browsing many places grow memory without bound.
+    // The key includes the end date, so each new day's record is a new entry; the
+    // least recently used records are dropped to stay inside the budget.
+    const cacheKey = Cache.generateKey('openmeteo-daily-record', latitude, longitude, startDate, endDate);
+    const cached = this.dailyRecordCache.get(cacheKey);
+    if (cached) {
+      return { record: cached };
+    }
+
+    // Two requests for one place at once share a single download
+    const inFlight = this.dailyRecordLoads.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+    const load = this.loadDailyRecord(cacheKey, latitude, longitude, startDate, endDate).finally(() => {
+      this.dailyRecordLoads.delete(cacheKey);
+    });
+    this.dailyRecordLoads.set(cacheKey, load);
+    return load;
+  }
+
+  /** Fetch one range of daily values from the archive */
+  private async downloadDailyRecord(
+    latitude: number,
+    longitude: number,
+    startDate: string,
+    endDate: string
+  ): Promise<OpenMeteoHistoricalResponse> {
     const params: Record<string, string | number> = {
       latitude,
       longitude,
@@ -416,23 +704,79 @@ export class OpenMeteoService {
       precipitation_unit: 'inch',
       timezone: 'auto'
     };
-
-    const cacheKey = Cache.generateKey('openmeteo-daily-record', latitude, longitude, startDate, endDate);
-    if (CacheConfig.enabled) {
-      const cached = this.cache.get(cacheKey);
-      if (cached) {
-        return cached as OpenMeteoHistoricalResponse;
-      }
-    }
-
     const response = await this.makeRequest<OpenMeteoHistoricalResponse>('/archive', params);
     this.validateResponse(response, startDate, endDate, false);
-
-    if (CacheConfig.enabled) {
-      // The key includes the end date, so each new day's record is a new entry
-      this.cache.set(cacheKey, response, getHistoricalDataTTL(endDate));
-    }
     return response;
+  }
+
+  private rememberDailyRecord(cacheKey: string, response: OpenMeteoHistoricalResponse): void {
+    this.dailyRecordCache.set(cacheKey, response, estimateDailyRecordBytes(response));
+  }
+
+  /** Memory missed: use the saved record if there is one, else download */
+  private async loadDailyRecord(
+    cacheKey: string,
+    latitude: number,
+    longitude: number,
+    startDate: string,
+    endDate: string
+  ): Promise<DailyRecordResult> {
+    const store = this.dailyRecordStore;
+    const saved = store ? await store.load(latitude, longitude, startDate) : null;
+
+    if (!store || !saved) {
+      const response = await this.downloadDailyRecord(latitude, longitude, startDate, endDate);
+      this.rememberDailyRecord(cacheKey, response);
+      const toSave = recordFromResponse(response);
+      if (store && toSave) {
+        await store.save(latitude, longitude, toSave);
+      }
+      return { record: response };
+    }
+
+    const wantedDays = daysBetween(startDate, endDate) + 1;
+    if (wantedDays >= 1 && saved.high.length >= wantedDays) {
+      // Already covers the range (a record ending later is simply cut short)
+      const response = responseFromRecord({
+        ...saved,
+        high: saved.high.slice(0, wantedDays),
+        low: saved.low.slice(0, wantedDays),
+        precipitation: saved.precipitation.slice(0, wantedDays),
+      });
+      this.rememberDailyRecord(cacheKey, response);
+      return { record: response };
+    }
+
+    // The saved record stops short of the range: fetch its recent end again plus whatever is new
+    const from = addDays(recordEndDate(saved), -(DAILY_RECORD_REFRESH_OVERLAP_DAYS - 1));
+    const tailStart = daysBetween(startDate, from) > 0 ? from : startDate;
+    try {
+      const tailResponse = await this.downloadDailyRecord(latitude, longitude, tailStart, endDate);
+      const tail = recordFromResponse(tailResponse);
+      if (!tail || tail.startDate !== tailStart) {
+        throw new ServiceUnavailableError('OpenMeteo', 'Open-Meteo returned an unexpected date range.');
+      }
+      const keep = daysBetween(saved.startDate, tailStart);
+      const merged: DailyRecord = {
+        ...tail,
+        startDate: saved.startDate,
+        high: saved.high.slice(0, keep).concat(tail.high),
+        low: saved.low.slice(0, keep).concat(tail.low),
+        precipitation: saved.precipitation.slice(0, keep).concat(tail.precipitation),
+      };
+      const response = responseFromRecord(merged);
+      this.rememberDailyRecord(cacheKey, response);
+      await store.save(latitude, longitude, merged);
+      return { record: response };
+    } catch (error) {
+      // Better an out-of-date record than none. It is not remembered in memory, so the
+      // next request tries the refresh again.
+      logger.warn('Could not refresh saved climate record; using the saved copy', {
+        service: 'OpenMeteo',
+        error: error instanceof Error ? error.name : 'unknown'
+      });
+      return { record: responseFromRecord(saved), refreshError: describeRefreshError(error) };
+    }
   }
 
   /**
@@ -648,7 +992,8 @@ export class OpenMeteoService {
     latitude: number,
     longitude: number,
     days: number = 7,
-    hourly: boolean = false
+    hourly: boolean = false,
+    model?: OpenMeteoModelId
   ): Promise<OpenMeteoForecastResponse> {
     // Validate coordinates
     validateLatitude(latitude);
@@ -662,30 +1007,160 @@ export class OpenMeteoService {
       );
     }
 
-    // Build parameters
-    const params = this.buildForecastParams(latitude, longitude, days, hourly);
+    if (model !== undefined && !Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      throw new InvalidLocationError('OpenMeteo', `Unknown forecast model "${String(model)}"`);
+    }
 
-    // Check cache first
+    // Build parameters; without a model, Open-Meteo picks and blends models itself ("best match")
+    const params = this.buildForecastParams(latitude, longitude, days, hourly);
+    if (model) {
+      params.models = model;
+    }
+
+    const cacheKey = Cache.generateKey('openmeteo-forecast', latitude, longitude, days, hourly, model ?? 'best_match');
     if (CacheConfig.enabled) {
-      const cacheKey = Cache.generateKey('openmeteo-forecast', latitude, longitude, days, hourly);
       const cached = this.cache.get(cacheKey);
       if (cached) {
         return cached as OpenMeteoForecastResponse;
       }
-
-      const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
-      this.validateForecastResponse(response, hourly);
-
-      // Cache for 2 hours (forecasts update regularly)
-      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
-
-      return response;
     }
 
-    // No caching
-    const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    let response: OpenMeteoForecastResponse;
+    try {
+      response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    } catch (error) {
+      // A regional model asked for a place outside its area: Open-Meteo answers 400 "No data is
+      // available for this location", which the shared handler words for the historical archive
+      if (model && error instanceof ApiError && /No data is available for this location/i.test(error.userMessage)) {
+        throw new DataNotFoundError('OpenMeteo', OUTSIDE_MODEL_AREA);
+      }
+      throw error;
+    }
     this.validateForecastResponse(response, hourly);
+    nullsToMissing(response.daily);
+    nullsToMissing(response.hourly);
+
+    if (model) {
+      // A single model stops at its horizon (ICON ~7.5 days, NAM ~3); drop the empty tail
+      // rather than printing days with no forecast. No data at all means the place is outside
+      // the model's area (NAM and HRRR cover the continental US only).
+      const dayCount = lengthWithData(response.daily?.temperature_2m_max);
+      if (response.daily) {
+        truncateSeries(response.daily, dayCount);
+      }
+      if (response.hourly) {
+        truncateSeries(response.hourly, lengthWithData(response.hourly.temperature_2m));
+      }
+      if (dayCount === 0 && lengthWithData(response.hourly?.temperature_2m) === 0) {
+        throw new DataNotFoundError('OpenMeteo', OUTSIDE_MODEL_AREA);
+      }
+    }
+
+    if (CacheConfig.enabled) {
+      // Cache for 2 hours (forecasts update regularly)
+      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
+    }
     return response;
+  }
+
+  /**
+   * Daily forecast from one specific model, rather than Open-Meteo's automatic blend
+   * (used by the model comparison). Days past the model's horizon come back as nulls.
+   *
+   * @param days - Forecast days (1-16)
+   * @param model - One of OPEN_METEO_MODELS
+   */
+  async getModelForecast(
+    latitude: number,
+    longitude: number,
+    days: number,
+    model: OpenMeteoModelId
+  ): Promise<OpenMeteoForecastResponse> {
+    validateLatitude(latitude);
+    validateLongitude(longitude);
+    if (!Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      throw new InvalidLocationError('OpenMeteo', `Unknown forecast model "${String(model)}"`);
+    }
+    if (!Number.isInteger(days) || days < 1 || days > 16) {
+      throw new InvalidLocationError('OpenMeteo', 'Forecast days must be between 1 and 16');
+    }
+
+    const params: Record<string, string | number> = {
+      latitude,
+      longitude,
+      forecast_days: days,
+      models: model,
+      daily: [
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'precipitation_probability_max',
+        'precipitation_sum',
+        'wind_speed_10m_max',
+        'relative_humidity_2m_mean',
+      ].join(','),
+      temperature_unit: 'fahrenheit',
+      wind_speed_unit: 'mph',
+      precipitation_unit: 'inch',
+      timezone: 'auto',
+    };
+
+    const cacheKey = Cache.generateKey('openmeteo-model-forecast', latitude, longitude, days, model);
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached as OpenMeteoForecastResponse;
+      }
+    }
+
+    const response = await this.makeRequestToForecast<OpenMeteoForecastResponse>('/forecast', params);
+    this.validateForecastResponse(response, false);
+
+    if (CacheConfig.enabled) {
+      // Same 2 hours as other forecasts; models publish new runs every 6-12 hours
+      this.cache.set(cacheKey, response, 2 * 60 * 60 * 1000);
+    }
+    return response;
+  }
+
+  /**
+   * When the latest run of a model started (ISO 8601 UTC), from Open-Meteo's model metadata.
+   * Returns undefined if the metadata can't be read or looks stale, rather than guessing.
+   */
+  async getModelRunTime(model: OpenMeteoModelId): Promise<string | undefined> {
+    if (!Object.prototype.hasOwnProperty.call(OPEN_METEO_MODELS, model)) {
+      return undefined;
+    }
+    const cacheKey = Cache.generateKey('openmeteo-model-run', model);
+    if (CacheConfig.enabled) {
+      const cached = this.cache.get(cacheKey);
+      if (cached !== undefined) {
+        return (cached as { run?: string }).run;
+      }
+    }
+
+    let run: string | undefined;
+    try {
+      // The metadata lives beside the API, at <host>/data/<model>/static/meta.json
+      const origin = new URL(this.forecastClient.defaults.baseURL ?? '').origin;
+      const response = await this.forecastClient.get<{ last_run_initialisation_time?: unknown }>(
+        `${origin}/data/${OPEN_METEO_MODELS[model].metadata}/static/meta.json`
+      );
+      const seconds = response.data?.last_run_initialisation_time;
+      if (typeof seconds === 'number' && Number.isFinite(seconds)) {
+        const ms = seconds * 1000;
+        const age = Date.now() - ms;
+        if (age >= -60 * 60 * 1000 && age <= MODEL_RUN_MAX_AGE_MS) {
+          run = new Date(ms).toISOString();
+        }
+      }
+    } catch {
+      run = undefined; // the forecast itself still works; only the label loses its run time
+    }
+
+    if (CacheConfig.enabled) {
+      this.cache.set(cacheKey, { run }, 15 * 60 * 1000);
+    }
+    return run;
   }
 
   /**

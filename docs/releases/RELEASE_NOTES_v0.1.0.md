@@ -59,7 +59,7 @@ Add to your MCP client configuration:
 }
 ```
 
-See [CLIENT_SETUP.md](./docs/CLIENT_SETUP.md) for setup instructions for all supported clients.
+See [CLIENT_SETUP.md](../CLIENT_SETUP.md) for setup instructions for all supported clients.
 
 ### What's New in v0.1.0
 
@@ -81,10 +81,10 @@ See [CLIENT_SETUP.md](./docs/CLIENT_SETUP.md) for setup instructions for all sup
 
 ### Documentation
 
-- [README.md](./README.md) - Main documentation
-- [CLIENT_SETUP.md](./docs/CLIENT_SETUP.md) - Setup for various AI assistants
-- [ERROR_HANDLING.md](./docs/ERROR_HANDLING.md) - Error handling documentation
-- [MCP_BEST_PRACTICES.md](./docs/MCP_BEST_PRACTICES.md) - MCP implementation guide
+- [README.md](../../README.md) - Main documentation
+- [CLIENT_SETUP.md](../CLIENT_SETUP.md) - Setup for various AI assistants
+- [ERROR_HANDLING.md](../ERROR_HANDLING.md) - Error handling documentation
+- [MCP_BEST_PRACTICES.md](../MCP_BEST_PRACTICES.md) - MCP implementation guide
 - [CHANGELOG.md](./CHANGELOG.md) - Detailed changelog
 
 ### Requirements
@@ -98,7 +98,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### License
 
-MIT License - see [LICENSE](./LICENSE) for details
+MIT License - see [LICENSE](../../LICENSE) for details
 
 ---
 

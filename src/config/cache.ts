@@ -90,6 +90,10 @@ export const CacheConfig = {
     // Alerts can change rapidly, cache for shorter period
     alerts: 5 * MINUTE,
 
+    // Weather radar imagery capabilities and frame lists
+    // Radar updates every 2-5 minutes
+    weatherImagery: 3 * MINUTE,
+
     // Recent historical data (< 7 days old)
     // Recent data may still be updated/corrected
     recentHistorical: 1 * HOUR,

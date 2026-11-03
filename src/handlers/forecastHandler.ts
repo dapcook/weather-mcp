@@ -5,7 +5,7 @@
 
 import { DateTime } from 'luxon';
 import { NOAAService } from '../services/noaa.js';
-import { OpenMeteoService } from '../services/openmeteo.js';
+import { OpenMeteoService, FORECAST_MODELS, ForecastModel } from '../services/openmeteo.js';
 import { NOMADSService } from '../services/nomads.js';
 import { NCEIService } from '../services/ncei.js';
 import { LocationStore } from '../services/locationStore.js';
@@ -37,6 +37,32 @@ interface ForecastArgs {
   include_severe_weather?: boolean;
   include_normals?: boolean;
   source?: 'auto' | 'noaa' | 'openmeteo' | 'nomads';
+  model?: string;
+}
+
+/** Other names accepted for a forecast model */
+const FORECAST_MODEL_ALIASES: Record<string, ForecastModel> = {
+  ecmwf_ifs: 'ecmwf',
+  ifs: 'ecmwf',
+  aifs: 'ecmwf_aifs',
+  icon_global: 'icon',
+  gem_global: 'gem',
+};
+
+/** The model the caller asked for, or undefined to let the source decide (the default) */
+export function parseForecastModel(value: unknown): ForecastModel | undefined {
+  if (value === undefined || value === null || value === '' || value === 'auto') {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid model: must be a string, received ${typeof value}`);
+  }
+  const name = value.trim().toLowerCase();
+  const model = FORECAST_MODEL_ALIASES[name] ?? name;
+  if (!Object.prototype.hasOwnProperty.call(FORECAST_MODELS, model)) {
+    throw new Error(`Invalid model: "${value}". Must be one of: ${Object.keys(FORECAST_MODELS).join(', ')}.`);
+  }
+  return model as ForecastModel;
 }
 
 /**
@@ -193,6 +219,27 @@ export async function handleGetForecast(
 
   // Get source preference or auto-detect
   const requestedSource = (args as ForecastArgs)?.source || 'auto';
+  const model = parseForecastModel((args as ForecastArgs)?.model);
+
+  // A specific model always comes from Open-Meteo, which serves each model's own output.
+  // (NOAA's forecast is the Weather Service's own product, not one model.)
+  if (model) {
+    if (requestedSource === 'noaa' || requestedSource === 'nomads') {
+      throw new Error(`Invalid combination: "model" uses Open-Meteo, so use source "auto" or "openmeteo" with it (got source "${requestedSource}").`);
+    }
+    return await formatOpenMeteoForecast(
+      openMeteoService,
+      nceiService,
+      latitude,
+      longitude,
+      days,
+      granularity,
+      include_precipitation_probability,
+      include_normals,
+      model
+    );
+  }
+
   if (requestedSource === 'noaa') {
     return await formatNOAAForecast(
       noaaService,
@@ -301,8 +348,10 @@ async function formatNOMADSForecast(
     const windMax = forecast.daily.wind_speed_10m_max[i];
     const humidity = forecast.daily.relative_humidity_2m_mean[i];
 
-    if (Number.isFinite(high) && Number.isFinite(low)) {
-      output += `**Temperature:** High ${Math.round(high)}°F / Low ${Math.round(low)}°F\n`;
+    // A day the run only partly covers can lack its high or low (see aggregateDaily)
+    if (Number.isFinite(high) || Number.isFinite(low)) {
+      const fmt = (value: number) => (Number.isFinite(value) ? `${Math.round(value)}°F` : '— (not covered by this run)');
+      output += `**Temperature:** High ${fmt(high)} / Low ${fmt(low)}\n`;
     }
     output += `**Precipitation Chance:** ${Math.round(precipChance)}%\n`;
     output += `**Precipitation:** ${precipSum.toFixed(2)} in\n`;
@@ -319,7 +368,7 @@ async function formatNOMADSForecast(
   }
 
   output += '---\n';
-  output += '*Data source: NOMADS/NCEP GFS model run (global). Precipitation chance is derived from deterministic 6-hour model interval signals.*\n';
+  output += '*Data source: NOMADS/NCEP GFS model run (global). Precipitation chance is the share of the day\'s 3-hourly forecast steps with measurable precipitation in this one run, not a probability.*\n';
 
   return {
     content: [
@@ -540,21 +589,30 @@ async function formatOpenMeteoForecast(
   days: number,
   granularity: 'daily' | 'hourly',
   include_precipitation_probability: boolean,
-  include_normals: boolean
+  include_normals: boolean,
+  model?: ForecastModel
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
-  // Get forecast data from Open-Meteo
-  const forecast = await openMeteoService.getForecast(
-    latitude,
-    longitude,
-    days,
-    granularity === 'hourly'
-  );
+  // Get forecast data from Open-Meteo: one model's own forecast, or its automatic blend
+  const modelInfo = model ? FORECAST_MODELS[model] : undefined;
+  const [forecast, modelRun] = await Promise.all([
+    openMeteoService.getForecast(latitude, longitude, days, granularity === 'hourly', modelInfo?.id),
+    modelInfo ? openMeteoService.getModelRunTime(modelInfo.id) : Promise.resolve(undefined),
+  ]);
 
   let output = `# Weather Forecast (${granularity === 'hourly' ? 'Hourly' : 'Daily'})\n\n`;
   output += `**Location:** ${latitude.toFixed(4)}, ${longitude.toFixed(4)}\n`;
   output += `**Elevation:** ${forecast.elevation}m\n`;
   output += `**Timezone:** ${forecast.timezone}\n`;
-  output += `**Forecast Days:** ${days}\n\n`;
+  output += `**Forecast Days:** ${days}\n`;
+  if (modelInfo) {
+    const run = modelRun ? `run ${DateTime.fromISO(modelRun).toUTC().toFormat('yyyy-LL-dd HH:mm')}Z` : 'latest run (time not reported)';
+    output += `**Model:** ${modelInfo.label}, ${run}\n`;
+    const daysWithData = forecast.daily?.time.length ?? 0;
+    if (granularity === 'daily' && daysWithData < days) {
+      output += `\n*${modelInfo.label} reaches ${modelInfo.reach}; showing ${daysWithData} of the ${days} days requested.*\n`;
+    }
+  }
+  output += `\n`;
 
   if (granularity === 'hourly' && forecast.hourly) {
     // Format hourly data
@@ -682,7 +740,9 @@ async function formatOpenMeteoForecast(
   }
 
   output += `---\n`;
-  output += `*Data source: Open-Meteo (Global)*\n`;
+  output += modelInfo
+    ? `*Data source: ${modelInfo.label} via Open-Meteo, this model only (not blended with others)*\n`
+    : `*Data source: Open-Meteo (Global)*\n`;
 
   // Add climate normals if requested and for daily forecasts only
   if (include_normals && granularity === 'daily' && forecast.daily) {

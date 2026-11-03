@@ -1,6 +1,8 @@
 /**
  * High-level MCP request lifecycle logger.
- * Writes one plain-text line per event to ~/.weather-mcp/requests.log.
+ * Writes one plain-text line per event to requests.log in WEATHER_MCP_DATA_DIR
+ * when set (e.g. a Docker volume; the container's home is read-only),
+ * otherwise ~/.weather-mcp/requests.log.
  */
 
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
@@ -18,7 +20,7 @@ interface RequestLogEvent {
   durationMs?: number;
 }
 
-const REQUEST_LOG_DIR = join(homedir(), '.weather-mcp');
+const REQUEST_LOG_DIR = process.env.WEATHER_MCP_DATA_DIR?.trim() || join(homedir(), '.weather-mcp');
 const REQUEST_LOG_PATH = join(REQUEST_LOG_DIR, 'requests.log');
 
 function ensureRequestLogDirectoryExists(): void {
