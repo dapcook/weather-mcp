@@ -153,6 +153,16 @@ describe('web server with a token', () => {
     expect((await fetch(`${server.base}/`)).status).toBe(200);
   });
 
+  it('serves hourly meteogram data through /api/meteogram', async () => {
+    const without = await fetch(`${server.base}/api/meteogram?latitude=39.0997&longitude=-94.5786`);
+    expect(without.status).toBe(401);
+
+    const invalid = await fetch(`${server.base}/api/meteogram?latitude=invalid&longitude=-94.5786`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it('requires the token on /api', async () => {
     const without = await fetch(`${server.base}/api/tools`);
     expect(without.status).toBe(401);

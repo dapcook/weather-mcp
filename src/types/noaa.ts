@@ -360,6 +360,8 @@ export interface GridpointProperties extends GridpointFireWeather, GridpointSeve
   windDirection?: GridpointDataSeries;
   windSpeed?: GridpointDataSeries;
   windGust?: GridpointDataSeries;
+  probabilityOfPrecipitation?: GridpointDataSeries;
+  quantitativePrecipitation?: GridpointDataSeries;
   // Winter weather fields
   snowfallAmount?: GridpointDataSeries; // Quantitative snowfall forecast (mm)
   iceAccumulation?: GridpointDataSeries; // Ice accumulation forecast (mm)

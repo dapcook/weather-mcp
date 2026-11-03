@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hourly Meteogram Explorer in Web Console (`/#meteogram`)** - Interactive multi-panel forecast graph modeled on the National Weather Service (NWS) Hourly Weather Graph:
+  - Synchronized 4-track layout:
+    1. Temperature (°F/°C), Dew Point, Feels Like / Apparent Temperature (dashed), 32°F / 0°C freezing reference line, and numerical labels at peaks
+    2. Surface Wind speed, Wind Gusts, and directional wind vectors/arrows pointing with wind flow
+    3. Relative Humidity (%), Precipitation Potential / PoP (%), and Sky Cover / Cloud Cover (%)
+    4. Quantitative Rain and Snow amounts with event accumulation labels (`Rain: 0.10 in`) plus Thunderstorm potential risk bars
+  - Background day/night shading (`isDay === false` shaded, day clean) with midnight date divider lines and date headers
+  - Multi-model switcher with 1-click comparison between `Auto (Best)`, `NOAA NWS (Official)`, `ECMWF IFS (European Centre 9km)`, `GFS (NCEP Global 13km)`, `HRRR (NCEP 3km CONUS)`, `NAM (NCEP 12km)`, `ICON (DWD 13km)`, and `GEM (Canadian 15km)`
+  - Horizon selector (48 Hours / 2 Days, 72 Hours / 3 Days, 5 Days, 7 Days) and °F / °C toggle
+  - Synchronized vertical crosshair tracking pointer position across all 4 tracks with rich hover tooltip
+  - Accessible keyboard navigation (<kbd>←</kbd>/<kbd>→</kbd> hour, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Esc</kbd>)
+  - Supported by backend `MeteogramService` and HTTP API endpoint `GET /api/meteogram?latitude=&longitude=&days=&model=`
 - **Multi-Provider US Radar, Historical Archive, NOAA GOES Satellite, Point Rain Totals, MCP Vision Image Content, and Console Player (`get_weather_imagery`)** - `get_weather_imagery` now uses NOAA/NWS Multi-Radar Multi-Sensor (MRMS) across all five US workspaces (`conus`, `alaska`, `hawaii`, `carib`, `guam` at 2-minute steps), the Iowa Environmental Mesonet (IEM) NEXRAD N0Q archive back to `2011-02-16` (5-minute steps), and NOAA NESDIS STAR GOES-19 (East) / GOES-18 (West) satellite imagery (`type: "satellite"` across US regional sectors, Alaska, Hawaii, Puerto Rico, Guam, and Full Disk), with RainViewer kept as the global radar fallback
   - New parameters: `source` (`auto`, `nws`, `iem`, `rainviewer`), `product` (`base_reflectivity`, `composite_reflectivity`, `echo_tops`, `precip_type` for radar; `geocolor`, `visible`, `infrared`, `water_vapor`, `shortwave_infrared` for satellite), `frames` (`1`–`24`), `past_minutes` (`5`–`180`), `at` (ISO-8601 UTC timestamp for historical US radar), `include_values` (fetches 1, 3, 6, 12, 24, 48, and 72-hour radar-estimated precipitation amounts in inches and mm from NWS MRMS QPE `/identify`), and `include_image` (attaches an MCP `{ type: "image", data, mimeType }` block — composited Esri basemap + radar + location pin PNG via built-in `node:zlib` for radar, or NOAA GOES JPEG for satellite — so vision-capable AI clients can visually inspect the weather pattern)
   - Automatic fallback: US radar requests try NWS first, then IEM, then RainViewer, noting any fallback in the output

@@ -236,6 +236,16 @@ export async function startWebServer(
     }));
   }
 
+  // Meteogram: hourly forecast time-series (NOAA & Open-Meteo multi-model)
+  async function getMeteogram(params: URLSearchParams) {
+    const latitude = parseCoordinate(params.get('latitude'), 'latitude', validateLatitude);
+    const longitude = parseCoordinate(params.get('longitude'), 'longitude', validateLongitude);
+    const daysStr = params.get('days');
+    const days = daysStr ? Math.max(1, Math.min(7, Number.parseInt(daysStr, 10) || 2)) : 2;
+    const model = (params.get('model') ?? 'auto') as import('../types/meteogram.js').MeteogramModelId;
+    return services.meteogramService.getMeteogram(latitude, longitude, days, model);
+  }
+
   // Climate explorer: the full daily record for a point plus its climatology
   async function getClimate(params: URLSearchParams) {
     const latitude = parseCoordinate(params.get('latitude'), 'latitude', validateLatitude);
@@ -331,6 +341,10 @@ export async function startWebServer(
       }
       if (req.method === 'GET' && path === '/api/climate') {
         sendJson(res, 200, await getClimate(url.searchParams));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/meteogram') {
+        sendJson(res, 200, await getMeteogram(url.searchParams));
         return;
       }
     }

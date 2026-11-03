@@ -7,6 +7,7 @@ The web console is a local web page for using the Weather MCP server without an 
 - [Choosing a location](#choosing-a-location)
 - [Radar maps](#radar-maps)
 - [Climate explorer](#climate-explorer)
+- [Hourly meteogram](#hourly-meteogram)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [How it works](#how-it-works)
@@ -166,6 +167,24 @@ Record highs and lows are records in this dataset, not official station records.
 
 The latest data is two days before today (in UTC), so the most recent day is always a complete day in the place's local time. Days in each series are grouped by the place's local time zone.
 
+## Hourly meteogram
+
+Open **Hourly meteogram** under **Explorers** in the sidebar (or go to `/#meteogram`). It provides a multi-panel forecast graph modeled on the National Weather Service Hourly Weather Graph, normalizing time-series forecast data across NOAA NWS and Open-Meteo multi-model sources (`ecmwf`, `gfs`, `hrrr`, `nam`, `icon`, `gem`).
+
+### Features
+
+- **Four stacked, synchronized tracks:**
+  1. **Temperature & Dew Point:** Red temperature line, green dewpoint line, dashed blue apparent temperature / feels like, 32°F / 0°C freezing line, and point labels at peaks.
+  2. **Wind Speed & Direction:** Magenta surface wind curve, dark navy wind gusts curve, and directional wind vectors/arrows pointing with the wind flow.
+  3. **Relative Humidity & Sky Cover:** Green relative humidity line, brown/bronze precipitation potential (PoP), and dashed blue sky cover (0%–100%).
+  4. **Precipitation & Thunder:** Green quantitative rain bars with multi-hour event accumulation totals (`Rain: 0.10 in`), blue snow bars, and red thunderstorm potential risk bars.
+- **Day & Night Shading:** Shaded vertical background bands for nighttime hours (`isDay === false`) and midnight date divider lines with weekday and date headers.
+- **Model Selector:** Instant 1-click comparison between `Auto (Best)`, `NOAA NWS (Official)`, `ECMWF IFS (European Centre 9km)`, `GFS (NCEP Global 13km)`, `HRRR (NCEP 3km High-Resolution Rapid Refresh)`, `NAM (NCEP North American Mesoscale 12km)`, `ICON (DWD 13km)`, and `GEM (Canadian 15km)`.
+- **Forecast Horizon:** Switch easily between 48 Hours (2 Days), 72 Hours (3 Days), 5 Days, and 7 Days.
+- **Units:** Quick °F and °C toggle.
+- **Synchronized Crosshair & Tooltip:** Moving your mouse across any panel tracks the exact hour across all 4 tracks with a detailed condition breakdown card.
+- **Keyboard Navigation:** <kbd>←</kbd> and <kbd>→</kbd> step hour-by-hour; <kbd>Home</kbd> / <kbd>End</kbd> jump to start or end; <kbd>Esc</kbd> clears hover state.
+
 ## Configuration
 
 Set these environment variables before `npm run web`:
@@ -218,6 +237,7 @@ HTTP endpoints (the `/api/*` ones are for the page, not meant as a public API):
 | `GET /api/saved-locations` | Saved locations, read directly from `locations.json` in `WEATHER_MCP_DATA_DIR` (default `~/.weather-mcp`) |
 | `GET /api/geocode?q=` | Place search via Nominatim (up to 6 results) |
 | `GET /api/climate?latitude=&longitude=&baseline=` | The climate explorer's data, described below |
+| `GET /api/meteogram?latitude=&longitude=&days=&model=` | The hourly meteogram's normalized multi-model time series |
 
 `/api/climate` returns everything the explorer needs in one response (about 500 KB):
 

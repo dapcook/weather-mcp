@@ -47,12 +47,13 @@ src/
 │   ├── nifc.ts                 # NIFC wildfire ArcGIS API client
 │   ├── geocoding.ts            # Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
 │   ├── ncei.ts                 # NOAA NCEI climate normals client (optional token)
+│   ├── meteogram.ts            # Hourly meteogram service (NOAA NWS & Open-Meteo multi-model)
 │   ├── radar/                  # Multi-provider radar sources (NwsRadarSource, IemRadarSource, RainViewerRadarSource) + NwsQpeService + NwsGoesSatelliteService
 │   ├── rainviewer.ts           # RainViewer radar imagery API client
 │   └── blitzortung.ts          # Blitzortung.org MQTT lightning detection client
 ├── web/                        # HTTP server: /mcp for AI clients + web console
 │   ├── server.ts               # Entry point (npm run web)
-│   ├── app.ts                  # Routes: /mcp, /, /api/*, /health; /api/climate for the climate explorer
+│   ├── app.ts                  # Routes: /mcp, /, /api/*, /health; /api/climate for climate explorer; /api/meteogram for hourly meteogram
 │   ├── config.ts               # WEB_HOST / WEB_PORT / WEB_ALLOWED_HOSTS / WEATHER_MCP_TOKEN parsing
 │   ├── access.ts               # Host (DNS rebinding), Origin (CSRF), bearer token checks
 │   └── envDefaults.ts          # ENABLED_TOOLS=all default, imported before config/tools
@@ -64,6 +65,7 @@ src/
 │   ├── nominatim.ts            # Nominatim API types (v1.7.0)
 │   ├── savedLocations.ts       # Saved locations types (v1.7.0)
 │   ├── imagery.ts              # Weather imagery types
+│   ├── meteogram.ts            # Hourly meteogram response types
 │   ├── lightning.ts            # Lightning strike/safety types
 │   └── wildfire.ts             # NIFC wildfire types
 ├── utils/                      # Shared utilities
@@ -166,6 +168,7 @@ Then open **http://127.0.0.1:8787**. The user guide is **[docs/WEB_CONSOLE.md](d
 - **Location helpers:** one-row bar with saved-location picker, name search, browser geolocation, a `📍` readout (`describeLocation()`), and the Coordinates toggle
 - **Radar view:** NWS GeoServer WMS, IEM WMS-T, and RainViewer tiles drawn over hand-placed Esri basemap tiles (gray canvas base, transportation and label overlays); drag to pan, +/− zoom (levels 3–11 for WMS, 3–7 for RainViewer), pin at the location, and a Play/Pause frame timeline slider for multi-frame animations
 - **Climate Explorer view:** WeatherSpark-style interactive temperature chart (see below), drawn as hand-built SVG
+- **Hourly Meteogram view:** NWS Hourly Weather Graph multi-panel forecast chart (Temperature/Dewpoint/Feels like, Wind/Gusts/Barbs, RH/PoP/Sky cover, Rain/Snow/Thunder accumulations), multi-model selection (NOAA, ECMWF, GFS, HRRR, NAM, ICON, GEM), day/night shading, 48h to 7d horizons, and synchronized crosshair hovercard, drawn as hand-built SVG
 
 Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Origin` (CSRF) against loopback names plus `WEB_ALLOWED_HOSTS`; optional bearer token on `/mcp` and `/api/*`; JSON-only, size-capped bodies; strict CSP (`script-src 'unsafe-inline'`, `connect-src 'self'`), so **no third-party scripts or chart libraries** can be loaded by the page.
 
@@ -199,6 +202,27 @@ Security: binds to `127.0.0.1` by default; checks `Host` (DNS rebinding) and `Or
 - The last year is padded to Dec 31 so its bands continue past the latest data
 - Percentile ranks are interpolated in the page from the server's 21 quantiles (`percentileRank` in the page mirrors the one in `climatology.ts`)
 - Only the chart and tiles redraw on view changes (not the full card)
+
+### Hourly Meteogram
+
+`GET /api/meteogram?latitude=&longitude=&days=&model=` returns normalized hourly time series data for the NWS-style multi-panel forecast graph:
+- Combines NOAA NWS hourly forecast + gridpoint time series (for US coordinates) and Open-Meteo multi-model API (`ecmwf`, `gfs`, `hrrr`, `nam`, `icon`, `gem`)
+- Normalized metrics per hour: temperature, dewpoint, apparent temperature, sustained wind speed, wind gusts, wind direction (degrees + compass), relative humidity, precipitation probability (PoP), sky cover / cloud cover, liquid rain amounts, snowfall, thunderstorm probability, weather codes, and short forecast summaries
+- Supports 48-hour, 72-hour, 5-day, and 7-day forecast horizons
+
+`web/index.html` hourly meteogram features:
+- Four stacked, synchronized SVG tracks matching the NWS Hourly Weather Graph:
+  1. Temperature (°F/°C), Dew Point, Feels Like (dashed), Freezing line (32°F / 0°C), and temperature point labels
+  2. Surface Wind speed, Wind Gusts, and directional wind vectors/arrows
+  3. Relative Humidity, Precipitation Potential (PoP), and Sky Cover (%)
+  4. Rain and Snow amounts with accumulation summaries (`Rain: 0.10 in`) plus Thunderstorm potential risk bars
+- Alternating day/night background bands (`isDay === false` shaded)
+- Midnight date separator lines with day-of-week & calendar date headers
+- 1-click model switcher (`Auto`, `NOAA NWS`, `ECMWF IFS`, `GFS`, `HRRR`, `NAM`, `ICON`, `GEM`)
+- Quick horizon pills (`48h`, `72h`, `5d`, `7d`) and `°F`/`°C` toggle
+- Synchronized vertical crosshair tracking cursor position across all 4 tracks
+- Interactive hover tooltip with comprehensive hourly conditions
+- Accessible keyboard navigation (←/→ hour, Home/End, Esc)
 
 ### Environment Variables (web server)
 - `WEB_HOST` — address to listen on (default `127.0.0.1`; `0.0.0.0` in a container)

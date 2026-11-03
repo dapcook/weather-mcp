@@ -468,9 +468,9 @@ You can also find coordinates manually:
 
 ## Web Console (use the tools without an LLM)
 
-A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result. It also has a **Climate explorer** for browsing any place's daily highs and lows since 1940.
+A local web page for running every MCP tool by hand: pick a tool, fill in a form, and read the formatted result. It includes a **Climate explorer** for browsing any place's daily highs and lows since 1940, and an **Hourly meteogram** providing NWS-style multi-model forecast charts (NOAA, ECMWF, GFS, HRRR, NAM, ICON, GEM).
 
-📖 **[Web Console Guide](./docs/WEB_CONSOLE.md)** covers every feature, the climate explorer's controls and chart, configuration, and troubleshooting.
+📖 **[Web Console Guide](./docs/WEB_CONSOLE.md)** covers every feature, the climate explorer, the hourly meteogram, configuration, and troubleshooting.
 
 ```bash
 npm run web

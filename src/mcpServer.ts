@@ -20,6 +20,7 @@ import { NIFCService } from './services/nifc.js';
 import { NOMADSService } from './services/nomads.js';
 import { ModelComparisonService } from './services/modelComparison.js';
 import { GeocodingService } from './services/geocoding.js';
+import { MeteogramService } from './services/meteogram.js';
 import { LocationStore } from './services/locationStore.js';
 import { toolConfig } from './config/tools.js';
 import { logger } from './utils/logger.js';
@@ -110,6 +111,7 @@ export interface WeatherServices {
   modelComparisonService: ModelComparisonService;
   nifcService: NIFCService;
   geocodingService: GeocodingService;
+  meteogramService: MeteogramService;
 }
 
 export interface WeatherServicesOptions {
@@ -140,10 +142,12 @@ export function createServices(options: WeatherServicesOptions = {}): WeatherSer
   // Climate explorer downloads are saved here, so a restart does not repeat them
   const openMeteoService = new OpenMeteoService({ dailyRecordStoreDir: join(dataDir, 'climate'), ...options.openMeteo });
   const nomadsService = new NOMADSService({ userAgent });
+  const noaaService = new NOAAService({ userAgent });
+  const meteogramService = new MeteogramService({ noaaService, openMeteoService });
 
   return {
     // NOAA requires an identifying User-Agent
-    noaaService: new NOAAService({ userAgent }),
+    noaaService,
     // Open-Meteo: forecasts, historical, air quality, marine (no API key)
     openMeteoService,
     // Nominatim/OSM geocoding for save_location (rate limited to 1 req/sec per OSM policy)
@@ -160,6 +164,8 @@ export function createServices(options: WeatherServicesOptions = {}): WeatherSer
     nifcService: new NIFCService(),
     // Multi-provider geocoding for search_location (Census.gov, Nominatim, Open-Meteo)
     geocodingService: new GeocodingService(),
+    // Hourly weather meteogram (NOAA NWS + Open-Meteo multi-model)
+    meteogramService,
   };
 }
 
@@ -170,6 +176,7 @@ export async function shutdownServices(services: WeatherServices): Promise<void>
   await analytics.shutdown();
   services.noaaService.clearCache();
   services.openMeteoService.clearCache();
+  services.meteogramService.clearCache();
 }
 
 /**
