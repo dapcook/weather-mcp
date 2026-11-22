@@ -246,6 +246,13 @@ export async function startWebServer(
     return services.meteogramService.getMeteogram(latitude, longitude, days, model);
   }
 
+  // NWS Area Forecast Discussion (AFD) with parsed sections and jargon decoder
+  async function getForecastDiscussion(params: URLSearchParams) {
+    const latitude = parseCoordinate(params.get('latitude'), 'latitude', validateLatitude);
+    const longitude = parseCoordinate(params.get('longitude'), 'longitude', validateLongitude);
+    return services.noaaService.getForecastDiscussion(latitude, longitude);
+  }
+
   // Climate explorer: the full daily record for a point plus its climatology
   async function getClimate(params: URLSearchParams) {
     const latitude = parseCoordinate(params.get('latitude'), 'latitude', validateLatitude);
@@ -345,6 +352,10 @@ export async function startWebServer(
       }
       if (req.method === 'GET' && path === '/api/meteogram') {
         sendJson(res, 200, await getMeteogram(url.searchParams));
+        return;
+      }
+      if (req.method === 'GET' && path === '/api/forecast-discussion') {
+        sendJson(res, 200, await getForecastDiscussion(url.searchParams));
         return;
       }
     }

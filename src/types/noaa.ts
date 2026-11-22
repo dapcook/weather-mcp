@@ -574,3 +574,63 @@ export interface USGSIVResponse {
   globalScope: boolean;
   typeSubstituted: boolean;
 }
+
+/**
+ * NWS Text Product metadata item (from /products/types/{type}/locations/{wfo})
+ */
+export interface NwsProductListItem {
+  id: string;
+  wmoCollectiveId?: string;
+  issuingOffice: string;
+  issuanceTime: string;
+  productCode: string;
+  productName: string;
+}
+
+/**
+ * NWS Text Product collection response
+ */
+export interface NwsProductListResponse {
+  '@graph': NwsProductListItem[];
+}
+
+/**
+ * NWS Text Product detail response (from /products/{id})
+ */
+export interface NwsProductDetailResponse extends NwsProductListItem {
+  productText: string;
+}
+
+/**
+ * Parsed section of an NWS Area Forecast Discussion
+ */
+export interface AfdSection {
+  id: string;
+  title: string;
+  content: string;
+}
+
+/**
+ * Matched meteorological jargon entry found in a forecast discussion
+ */
+export interface AfdJargonMatch {
+  term: string;
+  expansion: string;
+  explanation: string;
+  category: 'thermodynamics' | 'dynamics' | 'convection' | 'models' | 'precipitation' | 'aviation';
+}
+
+/**
+ * Structured Area Forecast Discussion response
+ */
+export interface ForecastDiscussionResult {
+  wfo: string;
+  issuingOffice: string;
+  officeName: string;
+  productId: string;
+  issuanceTime: string;
+  headlineTime?: string;
+  sections: AfdSection[];
+  jargon: AfdJargonMatch[];
+  rawText: string;
+}

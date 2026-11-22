@@ -18,6 +18,7 @@ export type ToolName =
   | 'get_forecast'
   | 'get_forecast_nomads'
   | 'get_model_comparison_forecast'
+  | 'get_forecast_discussion'
   | 'get_current_conditions'
   | 'get_alerts'
   | 'get_historical_weather'
@@ -85,6 +86,7 @@ const TOOL_PRESETS: Record<string, ToolName[]> = {
     'get_forecast',
     'get_forecast_nomads',
     'get_model_comparison_forecast',
+    'get_forecast_discussion',
     'get_current_conditions',
     'get_alerts',
     'get_historical_weather',
@@ -115,6 +117,8 @@ const TOOL_ALIASES: Record<string, ToolName> = {
   'compare': 'get_model_comparison_forecast',
   'comparison': 'get_model_comparison_forecast',
   'models': 'get_model_comparison_forecast',
+  'afd': 'get_forecast_discussion',
+  'discussion': 'get_forecast_discussion',
   'current': 'get_current_conditions',
   'conditions': 'get_current_conditions',
   'alerts': 'get_alerts',
@@ -256,6 +260,7 @@ function isToolName(name: string): name is ToolName {
     'get_forecast',
     'get_forecast_nomads',
     'get_model_comparison_forecast',
+    'get_forecast_discussion',
     'get_current_conditions',
     'get_alerts',
     'get_historical_weather',

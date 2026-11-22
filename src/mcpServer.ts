@@ -45,6 +45,7 @@ import {
 } from './handlers/savedLocationsHandler.js';
 import { handleGetNomadsForecast } from './handlers/nomadsForecastHandler.js';
 import { handleGetModelComparisonForecast } from './handlers/modelComparisonHandler.js';
+import { handleGetForecastDiscussion } from './handlers/forecastDiscussionHandler.js';
 import { withAnalytics, analytics } from './analytics/index.js';
 import { randomUUID } from 'crypto';
 import { logRequestLifecycle } from './utils/requestLogger.js';
@@ -356,6 +357,44 @@ const TOOL_DEFINITIONS = {
           type: 'boolean' as const,
           description: 'Include climate normals (30-year averages) for comparison with current conditions (default: false). Shows normal high/low temperatures and precipitation, with departure from normal.',
           default: false
+        }
+      },
+      required: []
+    }
+  },
+
+  get_forecast_discussion: {
+    name: 'get_forecast_discussion' as const,
+    description: 'Get the latest National Weather Service Area Forecast Discussion (AFD) for a US location, including the forecaster\'s meteorological reasoning, model preference notes, and a plain-English jargon guide for novices. Use this when asked "why is the weather changing?", "what do NWS forecasters think?", "explain the forecast discussion", or to learn how forecasters interpret models.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        latitude: {
+          type: 'number' as const,
+          description: 'Latitude of the US location (-90 to 90). Not required if location_name is provided.',
+          minimum: -90,
+          maximum: 90
+        },
+        longitude: {
+          type: 'number' as const,
+          description: 'Longitude of the US location (-180 to 180). Not required if location_name is provided.',
+          minimum: -180,
+          maximum: 180
+        },
+        location_name: {
+          type: 'string' as const,
+          description: 'Name of a saved location (e.g., "home", "cabin"). Use this instead of latitude/longitude.'
+        },
+        section: {
+          type: 'string' as const,
+          enum: ['all', 'key_messages', 'synopsis', 'discussion', 'short_term', 'long_term', 'aviation'],
+          description: 'Optional section filter (default: "all").',
+          default: 'all'
+        },
+        include_jargon_guide: {
+          type: 'boolean' as const,
+          description: 'Include a plain-English glossary explaining meteorological abbreviations found in the discussion (default: true).',
+          default: true
         }
       },
       required: []
@@ -833,6 +872,7 @@ const TOOL_DEFINITIONS = {
  * get_forecast_nomads and get_model_comparison_forecast resolve it themselves).
  */
 const SAVED_LOCATION_TOOLS: ReadonlySet<string> = new Set([
+  'get_forecast_discussion',
   'get_current_conditions',
   'get_alerts',
   'get_historical_weather',
@@ -938,6 +978,11 @@ export function createMcpServer(services: WeatherServices): Server {
         case 'get_model_comparison_forecast':
           return completeSuccess(await withAnalytics('get_model_comparison_forecast', async () =>
             handleGetModelComparisonForecast(args, modelComparisonService, locationStore)
+          ));
+
+        case 'get_forecast_discussion':
+          return completeSuccess(await withAnalytics('get_forecast_discussion', async () =>
+            handleGetForecastDiscussion(toolArgs, noaaService)
           ));
 
         case 'get_current_conditions':

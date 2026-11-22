@@ -518,6 +518,34 @@
   .mg-tip .row span { color: var(--muted); }
   .mg-tip .row b { color: var(--text); font-weight: 600; }
 
+  /* ---------- forecast discussion explorer ---------- */
+  .afd-controls { margin-top: 12px; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .afd-controls .loc { margin: 0; padding: 0; background: none; border-radius: 0; gap: 8px; flex: 1 1 520px; }
+  .afd-controls .field label.name { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .afd-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .afd-form:has(.coords:not([hidden])) { flex-basis: 100%; }
+  .afd-form .coords { order: 3; flex-basis: 100%; padding: 8px; }
+  .afd-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .afd-tabs button { border: 1px solid var(--border); background: var(--panel); border-radius: 6px; padding: 5px 11px; font-size: 12.5px; cursor: pointer; color: var(--muted); }
+  .afd-tabs button:hover { background: var(--panel-2); color: var(--text); }
+  .afd-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; border-color: var(--accent); }
+  .afd-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr); gap: 16px; align-items: start; margin-top: 10px; }
+  @media (max-width: 900px) { .afd-grid { grid-template-columns: 1fr; } }
+  .afd-section { background: var(--panel-2); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  .afd-section h3 { margin: 0 0 8px; font-size: 15px; color: var(--text); }
+  .afd-section p { margin: 0 0 10px; line-height: 1.55; }
+  .afd-section p:last-child { margin-bottom: 0; }
+  .afd-glossary { background: var(--panel-2); border-radius: 8px; padding: 14px 15px; position: sticky; top: 16px; }
+  .afd-glossary h3 { margin: 0 0 4px; font-size: 14px; }
+  .afd-glossary .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .afd-jargon-item { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; margin-bottom: 8px; }
+  .afd-jargon-item:last-child { margin-bottom: 0; }
+  .afd-jargon-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 3px; }
+  .afd-jargon-head strong { font-size: 13px; color: var(--accent); }
+  .afd-cat { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
+  .afd-jargon-exp { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .afd-jargon-desc { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
   /* ---------- access token sign-in ---------- */
   .token-overlay {
     position: fixed; inset: 0; z-index: 20;
@@ -700,7 +728,7 @@
     const others = tools.filter((t) => !placed.has(t.name));
     if (others.length) groups.push(['Other', others]);
 
-    if (!needle || 'climate explorer history normals meteogram hourly forecast graph model'.split(' ').some((w) => needle.includes(w) || w.includes(needle))) {
+    if (!needle || 'climate explorer history normals meteogram hourly forecast graph model discussion afd jargon'.split(' ').some((w) => needle.includes(w) || w.includes(needle))) {
       list.append(el('div', { class: 'group-label', text: 'Explorers' }));
       list.append(el('button', {
         class: 'tool-btn', type: 'button',
@@ -712,6 +740,11 @@
         'aria-current': currentView === 'meteogram' ? 'true' : 'false',
         onclick: () => showMeteogramExplorer(),
       }, 'Hourly meteogram', el('span', { class: 'tool-id', text: 'NWS-style multi-model forecast graph' })));
+      list.append(el('button', {
+        class: 'tool-btn', type: 'button',
+        'aria-current': currentView === 'discussion' ? 'true' : 'false',
+        onclick: () => showDiscussionExplorer(),
+      }, 'Forecast discussion', el('span', { class: 'tool-id', text: 'NWS reasoning + jargon decoder' })));
     }
 
     for (const [label, members] of groups) {
@@ -1184,10 +1217,16 @@
         const mgBtn = el('button', {
           class: 'btn small',
           type: 'button',
-          style: 'margin-bottom: 12px; font-weight: 600;',
+          style: 'font-weight: 600;',
           onclick: () => showMeteogramExplorer(Number(lastArgs.latitude), Number(lastArgs.longitude), lastArgs.model || 'auto'),
         }, '📈 View in Hourly Meteogram');
-        div.append(el('div', { style: 'margin-bottom: 8px;' }, mgBtn));
+        const afdBtn = el('button', {
+          class: 'btn small',
+          type: 'button',
+          style: 'font-weight: 600;',
+          onclick: () => showDiscussionExplorer(Number(lastArgs.latitude), Number(lastArgs.longitude)),
+        }, '📖 Read NWS Discussion');
+        div.append(el('div', { style: 'display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;' }, mgBtn, afdBtn));
       }
       div.innerHTML += renderMarkdown(lastMarkdown);
       enhanceRadarImages(div, lastArgs);
@@ -3412,6 +3451,169 @@
     chart.replaceChildren(svg, tip);
   }
 
+  // ---------------------------------------------------------------------
+  // NWS Area Forecast Discussion Explorer + Novice Jargon Decoder
+  // ---------------------------------------------------------------------
+  const afd = {
+    data: null,
+    place: null,
+    activeSection: 'all',
+    showRaw: false,
+    loading: false,
+  };
+
+  function showDiscussionExplorer(initialLat, initialLon) {
+    current = null;
+    currentView = 'discussion';
+    $('#result-card').hidden = true;
+    store.set('weather-console:last-tool', 'discussion');
+    try { history.replaceState(null, '', '#discussion'); } catch { /* ignore */ }
+    renderToolList($('#tool-filter').value);
+    window.scrollTo({ top: 0 });
+
+    const saved = store.get('weather-console:discussion:args') || {};
+    if (initialLat !== undefined && initialLon !== undefined) {
+      saved.latitude = initialLat;
+      saved.longitude = initialLon;
+      afd.place = null;
+      afd.data = null;
+    } else if (saved.place) {
+      afd.place = saved.place;
+    }
+
+    const numField = (key, label, value) => {
+      const input = el('input', { id: `afd-${key.slice(0, 3)}`, name: key, type: 'number', step: 'any' });
+      if (Number.isFinite(Number(value)) && value !== null && value !== '') input.value = Number(Number(value).toFixed(4));
+      input.addEventListener('input', () => { afd.place = null; updateLocationSummary(); });
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadDiscussion(); });
+      return el('div', { class: 'field', 'data-key': key, 'data-kind': 'number' },
+        el('label', { class: 'name', for: input.id, text: label }), input);
+    };
+
+    const helper = buildLocationHelper({ latitude: {}, longitude: {} }, (pick) => {
+      afd.place = pick;
+      setTimeout(loadDiscussion, 0);
+    });
+
+    $('#tool-card').replaceChildren(
+      el('div', { class: 'tool-head' },
+        el('h2', { text: 'NWS Forecast Discussion' }),
+        el('code', { text: 'Area Forecast Discussion (AFD) · Novice Jargon Decoder' })),
+      el('div', { class: 'tool-desc' },
+        'Read the local National Weather Service forecaster\'s meteorological reasoning—which models they trust, ' +
+        'the synoptic setup, and key uncertainties—paired with a plain-English decoder for every abbreviation found in the text.'),
+      el('div', { class: 'afd-controls' },
+        helper,
+        el('div', { class: 'afd-form' },
+          el('div', { class: 'coords', hidden: true },
+            numField('latitude', 'Latitude', saved.latitude !== undefined ? saved.latitude : 39.0115),
+            numField('longitude', 'Longitude', saved.longitude !== undefined ? saved.longitude : -94.2106)),
+          el('div', { class: 'field' },
+            el('button', { class: 'btn primary', type: 'button', id: 'afd-load', onclick: loadDiscussion }, el('span', { text: 'Load' }))))),
+      el('div', { id: 'afd-status' }),
+      el('div', { id: 'afd-body' }));
+    $('#tool-card').classList.remove('collapsed');
+
+    if (afd.place && afd.place.label && Number.isFinite(Number(afd.place.latitude))) {
+      pickedPlace = { label: afd.place.label, latitude: Number(Number(afd.place.latitude).toFixed(4)), longitude: Number(Number(afd.place.longitude).toFixed(4)) };
+    }
+    updateLocationSummary();
+
+    if (afd.data) renderDiscussion();
+    else loadDiscussion();
+  }
+
+  async function loadDiscussion() {
+    const lat = Number($('#afd-lat').value);
+    const lon = Number($('#afd-lon').value);
+    const status = $('#afd-status');
+    if (!$('#afd-lat').value.trim() || !$('#afd-lon').value.trim() || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      status.replaceChildren(el('div', { class: 'hint', text: 'Pick a US location or enter latitude and longitude.' }));
+      return;
+    }
+
+    store.set('weather-console:discussion:args', { latitude: lat, longitude: lon, place: afd.place });
+    afd.loading = true;
+    const loadBtn = $('#afd-load');
+    if (loadBtn) loadBtn.disabled = true;
+    status.replaceChildren(el('div', { class: 'status running' }, el('span', { class: 'spinner' }), 'Fetching NWS Area Forecast Discussion…'));
+
+    try {
+      const data = await api(`/api/forecast-discussion?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}`);
+      afd.data = data;
+      afd.activeSection = 'all';
+      status.replaceChildren();
+      renderDiscussion();
+    } catch (err) {
+      if (err instanceof AccessTokenRequired) return;
+      status.replaceChildren(el('div', { class: 'error-box', text: `Failed to load Forecast Discussion: ${err.message}` }));
+    } finally {
+      afd.loading = false;
+      if (loadBtn) loadBtn.disabled = false;
+    }
+  }
+
+  function renderDiscussion() {
+    const body = $('#afd-body');
+    if (!body || !afd.data) return;
+    const d = afd.data;
+    const placeName = afd.place && afd.place.label ? afd.place.label : `${d.wfo} Forecast Area`;
+
+    const tabEntries = [{ id: 'all', title: 'All sections' }, ...d.sections.map((s) => ({ id: s.id, title: s.title }))];
+    const tabs = tabEntries.map((tab) => el('button', {
+      type: 'button',
+      'aria-pressed': String(afd.activeSection === tab.id),
+      onclick: () => { afd.activeSection = tab.id; renderDiscussion(); },
+    }, tab.title));
+
+    const rawToggle = el('button', {
+      type: 'button',
+      'aria-pressed': String(afd.showRaw),
+      onclick: () => { afd.showRaw = !afd.showRaw; renderDiscussion(); },
+    }, afd.showRaw ? 'Formatted view' : 'Raw NWS text');
+
+    const visibleSections = afd.activeSection === 'all'
+      ? d.sections
+      : d.sections.filter((s) => s.id === afd.activeSection);
+
+    const contentCol = el('div');
+    if (afd.showRaw) {
+      contentCol.append(el('pre', { class: 'raw', text: d.rawText }));
+    } else if (visibleSections.length === 0) {
+      contentCol.append(el('div', { class: 'hint', text: 'No sections available in this discussion.' }));
+    } else {
+      for (const sec of visibleSections) {
+        const card = el('div', { class: 'afd-section' }, el('h3', { text: sec.title }));
+        const mdDiv = el('div', { class: 'md' });
+        mdDiv.innerHTML = renderMarkdown(sec.content);
+        card.append(mdDiv);
+        contentCol.append(card);
+      }
+    }
+
+    const glossaryCol = el('aside', { class: 'afd-glossary', 'aria-label': 'Novice Forecaster Jargon Decoder' },
+      el('h3', { text: `Jargon Decoder (${d.jargon.length})` }),
+      el('div', { class: 'sub', text: d.jargon.length ? 'Terms found in this discussion, translated to plain English:' : 'No specialized abbreviations detected in this issuance.' }));
+
+    for (const item of d.jargon) {
+      glossaryCol.append(el('div', { class: 'afd-jargon-item' },
+        el('div', { class: 'afd-jargon-head' },
+          el('strong', { text: item.term }),
+          el('span', { class: 'afd-cat', text: item.category })),
+        el('div', { class: 'afd-jargon-exp', text: item.expansion }),
+        el('div', { class: 'afd-jargon-desc', text: item.explanation })));
+    }
+
+    body.replaceChildren(
+      el('div', { class: 'mg-place', style: 'margin-top: 14px;' },
+        el('strong', { text: `${placeName} — ${d.officeName}` }),
+        el('div', { class: 'mg-meta', text: `Office: ${d.issuingOffice} (${d.wfo}) · Issued: ${d.headlineTime || d.issuanceTime}` })),
+      el('div', { style: 'display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;' },
+        el('div', { class: 'afd-tabs', role: 'group', 'aria-label': 'Discussion sections' }, tabs),
+        el('div', { class: 'afd-tabs' }, rawToggle)),
+      el('div', { class: 'afd-grid' }, contentCol, glossaryCol));
+  }
+
 
   // ---------------------------------------------------------------------
   // Saved locations (for the picker and alias autocomplete)
@@ -3468,6 +3670,11 @@
       showMeteogramExplorer();
       return;
     }
+    if (fromHash === 'discussion' || (!fromHash && last === 'discussion')) {
+      renderToolList();
+      showDiscussionExplorer();
+      return;
+    }
     const initial = [fromHash, last, 'get_forecast'].find((n) => n && tools.some((t) => t.name === n)) || (tools[0] && tools[0].name);
     renderToolList();
     if (initial) selectTool(initial);
@@ -3477,6 +3684,7 @@
     const hash = decodeURIComponent(location.hash.slice(1));
     if (hash === 'climate' && currentView !== 'climate') showClimateExplorer();
     else if (hash === 'meteogram' && currentView !== 'meteogram') showMeteogramExplorer();
+    else if (hash === 'discussion' && currentView !== 'discussion') showDiscussionExplorer();
     else if (tools.some((t) => t.name === hash) && (!current || current.name !== hash)) selectTool(hash);
   });
 
