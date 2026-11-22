@@ -126,10 +126,11 @@ describe('Tool Configuration', () => {
       const toolConfig = await createToolConfig('all');
 
       const enabled = toolConfig.getEnabledTools();
-      // 18 tools: v1.6.0 added river/wildfire, v1.7.0 the four saved-location tools,
-      // and the NOMADS forecast and model comparison tools were added after that
-      expect(enabled).toHaveLength(18);
+      // 19 tools: v1.6.0 added river/wildfire, v1.7.0 the four saved-location tools,
+      // NOMADS forecast, model comparison, and forecast discussion were added after that
+      expect(enabled).toHaveLength(19);
       expect(enabled).toContain('get_forecast');
+      expect(enabled).toContain('get_forecast_discussion');
       expect(enabled).toContain('get_current_conditions');
       expect(enabled).toContain('get_alerts');
       expect(enabled).toContain('get_historical_weather');
@@ -223,7 +224,7 @@ describe('Tool Configuration', () => {
       const toolConfig = await createToolConfig('all,-get_marine_conditions');
 
       const enabled = toolConfig.getEnabledTools();
-      expect(enabled).toHaveLength(17); // 18 total tools - 1 removed = 17
+      expect(enabled).toHaveLength(18); // 19 total tools - 1 removed = 18
       expect(enabled).not.toContain('get_marine_conditions');
       expect(enabled).toContain('get_forecast');
       expect(enabled).toContain('get_air_quality');

@@ -13,11 +13,15 @@ import type {
   NOAAErrorResponse,
   NWPSGauge,
   NWPSStageFlowResponse,
-  USGSIVResponse
+  USGSIVResponse,
+  NwsProductListResponse,
+  NwsProductDetailResponse,
+  ForecastDiscussionResult
 } from '../types/noaa.js';
 import { Cache } from '../utils/cache.js';
 import { CacheConfig, getHistoricalDataTTL } from '../config/cache.js';
 import { validateLatitude, validateLongitude } from '../utils/validation.js';
+import { parseAfdText, extractJargonMatches } from '../utils/forecastDiscussion.js';
 import { logger } from '../utils/logger.js';
 import {
   RateLimitError,
@@ -880,5 +884,63 @@ export class NOAAService {
     const url = `/nwis/iv/?format=json&sites=${siteNumber}&parameterCd=00060&siteStatus=active`;
     const response = await this.usgsClient.get<USGSIVResponse>(url);
     return response.data;
+  }
+
+  /**
+   * Get the latest NWS Area Forecast Discussion (AFD) for the Weather Forecast Office
+   * covering the given US coordinates, with parsed sections and matched jargon terms.
+   */
+  async getForecastDiscussion(latitude: number, longitude: number): Promise<ForecastDiscussionResult> {
+    validateLatitude(latitude);
+    validateLongitude(longitude);
+
+    const pointData = await this.getPointData(latitude, longitude);
+    const wfo = pointData.properties.gridId || pointData.properties.cwa;
+    if (!wfo) {
+      throw new DataNotFoundError('NOAA', 'No Weather Forecast Office found for this location');
+    }
+
+    if (CacheConfig.enabled) {
+      const cacheKey = Cache.generateKey('afd', wfo);
+      const cached = this.cache.get(cacheKey);
+      if (cached) {
+        return cached as ForecastDiscussionResult;
+      }
+    }
+
+    const listUrl = `/products/types/AFD/locations/${encodeURIComponent(wfo)}`;
+    const listResponse = await this.makeRequest<NwsProductListResponse>(listUrl);
+    const latest = listResponse['@graph']?.[0];
+    if (!latest?.id) {
+      throw new DataNotFoundError('NOAA', `No Area Forecast Discussion available for NWS office ${wfo}`);
+    }
+
+    const detail = await this.makeRequest<NwsProductDetailResponse>(`/products/${encodeURIComponent(latest.id)}`);
+    if (!detail.productText) {
+      throw new DataNotFoundError('NOAA', `Area Forecast Discussion ${latest.id} has no text content`);
+    }
+
+    const parsed = parseAfdText(detail.productText);
+    const jargon = extractJargonMatches(detail.productText);
+
+    const result: ForecastDiscussionResult = {
+      wfo,
+      issuingOffice: detail.issuingOffice || latest.issuingOffice,
+      officeName: parsed.officeName,
+      productId: detail.id || latest.id,
+      issuanceTime: detail.issuanceTime || latest.issuanceTime,
+      headlineTime: parsed.headlineTime,
+      sections: parsed.sections,
+      jargon,
+      rawText: detail.productText,
+    };
+
+    if (CacheConfig.enabled) {
+      const cacheKey = Cache.generateKey('afd', wfo);
+      // Cache AFD for 15 minutes
+      this.cache.set(cacheKey, result, 900000);
+    }
+
+    return result;
   }
 }
